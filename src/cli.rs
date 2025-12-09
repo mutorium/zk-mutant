@@ -2,6 +2,7 @@ use std::path::PathBuf;
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};
+use noir_metrics::{MetricsReport, analyze_path};
 
 /// Top-level CLI arguments for the `zk-mutant` binary.
 #[derive(Debug, Parser)]
@@ -42,6 +43,13 @@ pub fn run() -> Result<()> {
         Command::Scan { project } => {
             println!("zk-mutant: scan");
             println!("project: {:?}", project);
+
+            match analyze_path(&project) {
+                Ok(report) => print_scan_summary(&report),
+                Err(e) => {
+                    eprintln!("failed to analyze Noir project at {:?}: {e}", project);
+                }
+            }
         }
 
         Command::Run { project } => {
@@ -51,4 +59,21 @@ pub fn run() -> Result<()> {
     }
 
     Ok(())
+}
+
+/// Print a short summary based on noir-metrics output.
+fn print_scan_summary(report: &MetricsReport) {
+    let t = &report.totals;
+
+    println!("--- noir-metrics summary ---");
+    println!("project root:            {}", report.project_root.display());
+    println!("nr files (.nr):          {}", t.files);
+    println!("code lines:              {}", t.code_lines);
+    println!("test functions:          {}", t.test_functions);
+    println!("test code lines:         {}", t.test_lines);
+    println!("non-test code lines:     {}", t.non_test_lines);
+    println!(
+        "test code ratio:         {:.2}% (test_lines / code_lines)",
+        t.test_code_percentage
+    );
 }
