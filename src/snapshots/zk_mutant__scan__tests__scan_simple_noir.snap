@@ -1,0 +1,14 @@
+---
+source: src/scan.rs
+expression: overview
+---
+ProjectOverview {
+    root: "tests/fixtures/simple_noir",
+    nr_files: 2,
+    test_files: 0,
+    test_functions: 4,
+    code_lines: 25,
+    test_lines: 18,
+    non_test_lines: 7,
+    test_code_ratio: 72.0,
+}

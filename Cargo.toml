@@ -7,3 +7,6 @@ edition = "2024"
 anyhow = "1"
 clap = { version = "4", features = ["derive"] }
 noir-metrics = "0.1.0"
+
+[dev-dependencies]
+insta = "1"

@@ -54,3 +54,19 @@ pub fn scan_project(root: &Path) -> Result<ProjectOverview> {
     let report = analyze_path(root)?;
     Ok(ProjectOverview::from_report(&report))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    #[test]
+    fn scan_simple_noir_fixture() {
+        let root = PathBuf::from("tests/fixtures/simple_noir");
+        let mut overview = scan_project(&root).expect("scan_project should succeed");
+
+        overview.root = root;
+
+        insta::assert_debug_snapshot!("scan_simple_noir", overview);
+    }
+}
