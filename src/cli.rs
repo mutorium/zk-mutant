@@ -3,6 +3,7 @@ use std::path::PathBuf;
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 
+use crate::nargo::run_nargo_test;
 use crate::scan::{ProjectOverview, scan_project};
 
 /// Top-level CLI arguments for the `zk-mutant` binary.
@@ -56,6 +57,30 @@ pub fn run() -> Result<()> {
         Command::Run { project } => {
             println!("zk-mutant: run");
             println!("project: {:?}", project);
+
+            match run_nargo_test(&project) {
+                Ok(result) => {
+                    println!(
+                        "nargo test finished in {:?} (exit code: {:?}, success: {})",
+                        result.duration, result.exit_code, result.success
+                    );
+
+                    if !result.success {
+                        eprintln!("nargo test failed");
+
+                        if !result.stdout.is_empty() {
+                            eprintln!("stdout from nargo:\n{}", result.stdout);
+                        }
+
+                        if !result.stderr.is_empty() {
+                            eprintln!("stderr from nargo:\n{}", result.stderr);
+                        }
+                    }
+                }
+                Err(e) => {
+                    eprintln!("failed to run `nargo test` in {:?}: {e}", project);
+                }
+            }
         }
     }
 

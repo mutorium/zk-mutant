@@ -1,4 +1,5 @@
 mod cli;
+mod nargo;
 mod scan;
 
 /// Entry point for the `zk-mutant` binary.
