@@ -2,7 +2,8 @@ use std::path::PathBuf;
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};
-use noir_metrics::{MetricsReport, analyze_path};
+
+use crate::scan::{ProjectOverview, scan_project};
 
 /// Top-level CLI arguments for the `zk-mutant` binary.
 #[derive(Debug, Parser)]
@@ -44,7 +45,7 @@ pub fn run() -> Result<()> {
             println!("zk-mutant: scan");
             println!("project: {:?}", project);
 
-            match analyze_path(&project) {
+            match scan_project(&project) {
                 Ok(report) => print_scan_summary(&report),
                 Err(e) => {
                     eprintln!("failed to analyze Noir project at {:?}: {e}", project);
@@ -61,19 +62,18 @@ pub fn run() -> Result<()> {
     Ok(())
 }
 
-/// Print a short summary based on noir-metrics output.
-fn print_scan_summary(report: &MetricsReport) {
-    let t = &report.totals;
-
-    println!("--- noir-metrics summary ---");
-    println!("project root:            {}", report.project_root.display());
-    println!("nr files (.nr):          {}", t.files);
-    println!("code lines:              {}", t.code_lines);
-    println!("test functions:          {}", t.test_functions);
-    println!("test code lines:         {}", t.test_lines);
-    println!("non-test code lines:     {}", t.non_test_lines);
+/// Print a short summary based on the project overview.
+fn print_scan_summary(overview: &ProjectOverview) {
+    println!("--- project overview ---");
+    println!("project root:            {}", overview.root.display());
+    println!("nr files (.nr):          {}", overview.nr_files);
+    println!("test files:              {}", overview.test_files);
+    println!("code lines:              {}", overview.code_lines);
+    println!("test functions:          {}", overview.test_functions);
+    println!("test code lines:         {}", overview.test_lines);
+    println!("non-test code lines:     {}", overview.non_test_lines);
     println!(
         "test code ratio:         {:.2}% (test_lines / code_lines)",
-        t.test_code_percentage
+        overview.test_code_ratio
     );
 }

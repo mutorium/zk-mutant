@@ -1,4 +1,5 @@
 mod cli;
+mod scan;
 
 /// Entry point for the `zk-mutant` binary.
 fn main() -> anyhow::Result<()> {
