@@ -1,4 +1,5 @@
 mod cli;
+mod mutant;
 mod nargo;
 mod scan;
 
