@@ -1,7 +1,8 @@
 use std::path::{Path, PathBuf};
 
+use crate::project::Project;
 use anyhow::Result;
-use noir_metrics::{MetricsReport, analyze_path};
+use noir_metrics::MetricsReport;
 
 /// High-level overview of a Noir project used by zk-mutant.
 #[derive(Debug, Clone)]
@@ -32,12 +33,14 @@ pub struct ProjectOverview {
 }
 
 impl ProjectOverview {
-    /// Build a `ProjectOverview` from a noir-metrics report.
-    pub fn from_report(report: &MetricsReport) -> Self {
+    /// Build a `ProjectOverview` from a loaded Noir project.
+    pub fn from_project(project: &Project) -> Self {
+        let report: &MetricsReport = &project.metrics;
+
         let test_files = report.files.iter().filter(|f| f.is_test_file).count();
 
         ProjectOverview {
-            root: report.project_root.clone(),
+            root: project.root.clone(),
             nr_files: report.totals.files,
             test_files,
             test_functions: report.totals.test_functions,
@@ -51,8 +54,8 @@ impl ProjectOverview {
 
 /// Run noir-metrics on the given root and return a high-level overview.
 pub fn scan_project(root: &Path) -> Result<ProjectOverview> {
-    let report = analyze_path(root)?;
-    Ok(ProjectOverview::from_report(&report))
+    let project = Project::from_root(root.to_path_buf())?;
+    Ok(ProjectOverview::from_project(&project))
 }
 
 #[cfg(test)]
