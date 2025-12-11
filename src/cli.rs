@@ -4,6 +4,7 @@ use anyhow::Result;
 use clap::{Parser, Subcommand};
 
 use crate::nargo::run_nargo_test;
+use crate::options::Options;
 use crate::scan::{ProjectOverview, scan_project};
 
 /// Top-level CLI arguments for the `zk-mutant` binary.
@@ -43,22 +44,29 @@ pub fn run() -> Result<()> {
 
     match cli.command {
         Command::Scan { project } => {
-            println!("zk-mutant: scan");
-            println!("project: {:?}", project);
+            let options = Options::new(project);
 
-            match scan_project(&project) {
+            println!("zk-mutant: scan");
+            println!("project: {:?}", options.project_root);
+
+            match scan_project(&options.project_root) {
                 Ok(report) => print_scan_summary(&report),
                 Err(e) => {
-                    eprintln!("failed to analyze Noir project at {:?}: {e}", project);
+                    eprintln!(
+                        "failed to analyze Noir project at {:?}: {e}",
+                        options.project_root
+                    );
                 }
             }
         }
 
         Command::Run { project } => {
-            println!("zk-mutant: run");
-            println!("project: {:?}", project);
+            let options = Options::new(project);
 
-            match run_nargo_test(&project) {
+            println!("zk-mutant: run");
+            println!("project: {:?}", options.project_root);
+
+            match run_nargo_test(&options.project_root) {
                 Ok(result) => {
                     println!(
                         "nargo test finished in {:?} (exit code: {:?}, success: {})",
@@ -78,7 +86,10 @@ pub fn run() -> Result<()> {
                     }
                 }
                 Err(e) => {
-                    eprintln!("failed to run `nargo test` in {:?}: {e}", project);
+                    eprintln!(
+                        "failed to run `nargo test` in {:?}: {e}",
+                        options.project_root
+                    );
                 }
             }
         }
