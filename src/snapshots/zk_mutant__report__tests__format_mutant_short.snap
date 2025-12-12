@@ -1,0 +1,5 @@
+---
+source: src/report.rs
+expression: format_mutant_short(&m)
+---
+"#7 src/main.nr [12..14] Condition/eq_to_neq: \"==\" -> \"!=\""

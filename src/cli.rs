@@ -7,6 +7,7 @@ use crate::discover::discover_mutants;
 use crate::nargo::run_nargo_test;
 use crate::options::Options;
 use crate::project::Project;
+use crate::report::print_surviving_mutants;
 use crate::runner::run_all_mutants_in_temp;
 use crate::scan::{ProjectOverview, scan_project};
 
@@ -129,6 +130,9 @@ pub fn run() -> Result<()> {
             println!("mutants killed:   {}", summary.killed);
             println!("mutants survived: {}", summary.survived);
             println!("mutants invalid:  {}", summary.invalid);
+
+            // Extra observability: list surviving mutants with their textual change.
+            print_surviving_mutants(&mutants);
 
             Ok(())
         }
