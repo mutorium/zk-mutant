@@ -7,8 +7,8 @@ ProjectOverview {
     nr_files: 2,
     test_files: 0,
     test_functions: 3,
-    code_lines: 21,
+    code_lines: 24,
     test_lines: 12,
-    non_test_lines: 9,
-    test_code_ratio: 57.14285714285714,
+    non_test_lines: 12,
+    test_code_ratio: 50.0,
 }

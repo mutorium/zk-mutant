@@ -51,4 +51,20 @@ expression: mutants
         outcome: NotRun,
         duration_ms: None,
     },
+    Mutant {
+        id: 4,
+        operator: MutationOperator {
+            category: Condition,
+            name: "eq_to_neq",
+        },
+        span: SourceSpan {
+            file: "src/utils.nr",
+            start: 298,
+            end: 300,
+        },
+        original_snippet: "==",
+        mutated_snippet: "!=",
+        outcome: NotRun,
+        duration_ms: None,
+    },
 ]
