@@ -1,4 +1,5 @@
 mod cli;
+mod discover;
 mod mutant;
 mod nargo;
 mod options;
