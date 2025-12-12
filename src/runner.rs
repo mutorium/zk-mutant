@@ -46,6 +46,32 @@ pub fn copy_project_to_temp(project: &Project) -> Result<TempDir> {
     Ok(temp)
 }
 
+/// Apply a mutant to the corresponding source file inside a temporary project tree.
+///
+/// This reads the file from the temp directory, applies the recorded span patch,
+/// and writes the mutated contents back to disk.
+pub fn apply_mutant_in_temp_tree(temp_root: &Path, mutant: &Mutant) -> Result<()> {
+    let temp_file_path = temp_root.join(&mutant.span.file);
+
+    let original = fs::read_to_string(&temp_file_path).with_context(|| {
+        format!(
+            "failed to read temp file {:?} for mutant {}",
+            temp_file_path, mutant.id
+        )
+    })?;
+
+    let mutated = apply_span_patch(&original, &mutant.span, &mutant.mutated_snippet);
+
+    fs::write(&temp_file_path, mutated).with_context(|| {
+        format!(
+            "failed to write mutated temp file {:?} for mutant {}",
+            temp_file_path, mutant.id
+        )
+    })?;
+
+    Ok(())
+}
+
 /// Recursively copy all files and directories from `src` into `dst`.
 fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<()> {
     fs::create_dir_all(dst).with_context(|| format!("failed to create dir {:?}", dst))?;
@@ -132,5 +158,47 @@ mod tests {
                 fm.path
             );
         }
+    }
+    #[test]
+    fn apply_mutant_in_temp_tree_mutates_copied_file() {
+        let root = PathBuf::from("tests/fixtures/simple_noir");
+        let project = Project::from_root(root).expect("Project::from_root should succeed");
+
+        let mutants = discover_mutants(&project);
+        assert!(
+            !mutants.is_empty(),
+            "expected discover_mutants to find at least one mutant"
+        );
+
+        // Use the first mutant; ordering is deterministic.
+        let m = &mutants[0];
+
+        // Copy the project to a temp tree.
+        let temp = copy_project_to_temp(&project).expect("copy_project_to_temp should succeed");
+        let temp_root = temp.path();
+
+        // Apply the mutation in the temp tree.
+        apply_mutant_in_temp_tree(temp_root, m).expect("apply_mutant_in_temp_tree should succeed");
+
+        // Read back the mutated file from the temp tree.
+        let temp_file_path = temp_root.join(&m.span.file);
+        let mutated_contents =
+            std::fs::read_to_string(&temp_file_path).expect("failed to read mutated temp file");
+
+        let start = m.span.start as usize;
+        let end = start + m.mutated_snippet.len();
+
+        assert!(
+            end <= mutated_contents.len(),
+            "mutated source shorter than expected span"
+        );
+
+        let slice = &mutated_contents.as_bytes()[start..end];
+        let slice_str = std::str::from_utf8(slice).expect("mutated slice should be valid UTF-8");
+
+        assert_eq!(
+            slice_str, m.mutated_snippet,
+            "mutated snippet not present at expected span in temp file"
+        );
     }
 }
