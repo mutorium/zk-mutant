@@ -3,7 +3,7 @@ use std::{fs, path::Path};
 use anyhow::{Context, Result};
 use tempfile::TempDir;
 
-use crate::mutant::Mutant;
+use crate::mutant::{Mutant, MutantOutcome};
 use crate::nargo::{NargoTestResult, run_nargo_test};
 use crate::patch::apply_span_patch;
 use crate::project::Project;
@@ -91,6 +91,57 @@ pub fn run_single_mutant_in_temp(project: &Project, mutant: &Mutant) -> Result<N
 
     // TempDir is dropped here; the directory is cleaned up automatically.
     Ok(result)
+}
+
+/// Summary counts for a mutation-testing run.
+#[derive(Debug, Default)]
+pub struct RunSummary {
+    /// Number of mutants whose tests failed under mutation.
+    pub killed: usize,
+
+    /// Number of mutants for which tests still passed.
+    pub survived: usize,
+
+    /// Number of mutants that could not be built or executed.
+    pub invalid: usize,
+}
+
+/// Naive driver: run all mutants, copying the project for each one.
+///
+/// This is intentionally simple for v0.1: for every mutant, we call
+/// [`run_single_mutant_in_temp`], classify the outcome, and update the
+/// `Mutant`'s `outcome` and `duration_ms` fields.
+pub fn run_all_mutants_in_temp(project: &Project, mutants: &mut [Mutant]) -> Result<RunSummary> {
+    let mut summary = RunSummary::default();
+
+    for m in mutants.iter_mut() {
+        let result = match run_single_mutant_in_temp(project, m) {
+            Ok(r) => r,
+            Err(e) => {
+                eprintln!(
+                    "failed to run mutant {} in temp project for {:?}: {e}",
+                    m.id, m.span.file
+                );
+                m.outcome = MutantOutcome::Invalid;
+                summary.invalid += 1;
+                continue;
+            }
+        };
+
+        m.duration_ms = Some(result.duration.as_millis() as u64);
+
+        if result.success {
+            println!("mutant {} survived (tests still pass)", m.id);
+            m.outcome = MutantOutcome::Survived;
+            summary.survived += 1;
+        } else {
+            println!("mutant {} killed (tests failed under mutation)", m.id);
+            m.outcome = MutantOutcome::Killed;
+            summary.killed += 1;
+        }
+    }
+
+    Ok(summary)
 }
 
 /// Recursively copy all files and directories from `src` into `dst`.
