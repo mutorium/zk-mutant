@@ -7,22 +7,6 @@ expression: mutants
         id: 1,
         operator: MutationOperator {
             category: Condition,
-            name: "neq_to_eq",
-        },
-        span: SourceSpan {
-            file: "src/main.nr",
-            start: 82,
-            end: 84,
-        },
-        original_snippet: "!=",
-        mutated_snippet: "==",
-        outcome: NotRun,
-        duration_ms: None,
-    },
-    Mutant {
-        id: 2,
-        operator: MutationOperator {
-            category: Condition,
             name: "lt_to_ge",
         },
         span: SourceSpan {
@@ -36,23 +20,23 @@ expression: mutants
         duration_ms: None,
     },
     Mutant {
-        id: 3,
+        id: 2,
         operator: MutationOperator {
             category: Condition,
-            name: "eq_to_neq",
+            name: "neq_to_eq",
         },
         span: SourceSpan {
-            file: "src/main2.nr",
-            start: 231,
-            end: 233,
+            file: "src/main.nr",
+            start: 82,
+            end: 84,
         },
-        original_snippet: "==",
-        mutated_snippet: "!=",
+        original_snippet: "!=",
+        mutated_snippet: "==",
         outcome: NotRun,
         duration_ms: None,
     },
     Mutant {
-        id: 4,
+        id: 3,
         operator: MutationOperator {
             category: Condition,
             name: "neq_to_eq",

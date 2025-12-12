@@ -1,101 +1,160 @@
-use std::path::Path;
+use std::ops::Range;
 
 use crate::mutant::{Mutant, MutantOutcome, MutationOperator, OperatorCategory};
 use crate::project::Project;
 use crate::span::SourceSpan;
 
-/// Discover simple condition-operator mutants in all `.nr` files of the project.
-///
-/// Currently this looks for basic comparison operators like `==`, `!=`, `<`, `>`,
-/// `<=`, `>=` and creates one mutant per occurrence by flipping the operator.
+/// Discover comparison-operator mutants in all source files of a project.
 pub fn discover_mutants(project: &Project) -> Vec<Mutant> {
     let mut mutants = Vec::new();
-    let mut next_id: u64 = 1;
 
-    for source in project.source_files() {
-        let code = match source.read_to_string() {
+    for src in project.source_files() {
+        let path = src.relative_path().to_path_buf();
+        let code = match src.read_to_string() {
             Ok(c) => c,
             Err(e) => {
-                eprintln!(
-                    "warning: failed to read source file {:?}: {e}",
-                    source.path()
-                );
+                eprintln!("failed to read source file {:?}: {e}", src.path());
                 continue;
             }
         };
 
-        let file_rel = source.relative_path();
-        discover_condition_mutants(&code, file_rel, &mut mutants, &mut next_id);
+        // Compute byte ranges that belong to #[test] functions in this file.
+        let test_ranges = find_test_code_ranges(&code);
+
+        for (pattern, op_name, category, replacement) in comparison_mutation_rules() {
+            let mut search_start: usize = 0;
+
+            while let Some(idx) = code[search_start..].find(pattern) {
+                let start = search_start + idx;
+                let end = start + pattern.len();
+
+                // Skip operators that live inside #[test] functions.
+                if in_any_range(start, &test_ranges) {
+                    search_start = end;
+                    continue;
+                }
+
+                let span = SourceSpan {
+                    file: path.clone(),
+                    start: start as u32,
+                    end: end as u32,
+                };
+
+                let mutant = Mutant {
+                    id: 0, // placeholder, will be overwritten after sorting
+                    operator: MutationOperator {
+                        category: category.clone(),
+                        name: op_name.to_string(),
+                    },
+                    span,
+                    original_snippet: pattern.to_string(),
+                    mutated_snippet: replacement.to_string(),
+                    outcome: MutantOutcome::NotRun,
+                    duration_ms: None,
+                };
+
+                mutants.push(mutant);
+                search_start = end;
+            }
+        }
+    }
+
+    // 1) Sort by file, then by start offset
+    mutants.sort_by(|a, b| {
+        let key_a = (&a.span.file, a.span.start);
+        let key_b = (&b.span.file, b.span.start);
+        key_a.cmp(&key_b)
+    });
+
+    // 2) Reassign IDs to match sorted order (1-based)
+    for (idx, m) in mutants.iter_mut().enumerate() {
+        m.id = (idx as u64) + 1;
     }
 
     mutants
 }
 
-/// Helper to discover mutants for comparison operators in a single file.
+/// Simple set of comparison mutation rules for v0.1.
 ///
-/// This is intentionally simple: it uses plain string matching on the source text
-/// and avoids overlapping matches (for example between `<` and `<=`).
-fn discover_condition_mutants(
-    code: &str,
-    file_rel: &Path,
-    out: &mut Vec<Mutant>,
-    next_id: &mut u64,
-) {
-    // Handle multi-character operators first so they are not split into
-    // overlapping single-character matches.
-    let patterns: &[(&str, &str, &str)] = &[
-        // original, operator name, replacement
-        ("==", "eq_to_neq", "!="),
-        ("!=", "neq_to_eq", "=="),
-        ("<=", "le_to_gt", ">"),
-        (">=", "ge_to_lt", "<"),
-        ("<", "lt_to_ge", ">="),
-        (">", "gt_to_le", "<="),
-    ];
+/// Multi-character operators go first to avoid partially matching them
+/// as single-character operators.
+fn comparison_mutation_rules()
+-> &'static [(&'static str, &'static str, OperatorCategory, &'static str)] {
+    use OperatorCategory::Condition;
 
-    // Track spans that were already used to avoid overlapping mutants
-    let mut used_spans: Vec<(usize, usize)> = Vec::new();
-
-    for (original, op_name, replacement) in patterns {
-        for (start, _) in code.match_indices(original) {
-            let end = start + original.len();
-
-            if overlaps_existing_span(start, end, &used_spans) {
-                continue;
-            }
-
-            used_spans.push((start, end));
-
-            let span = SourceSpan {
-                file: file_rel.to_path_buf(),
-                start: start as u32,
-                end: end as u32,
-            };
-
-            let operator = MutationOperator {
-                category: OperatorCategory::Condition,
-                name: op_name.to_string(),
-            };
-
-            let mutant = Mutant {
-                id: *next_id,
-                operator,
-                span,
-                original_snippet: original.to_string(),
-                mutated_snippet: replacement.to_string(),
-                outcome: MutantOutcome::NotRun,
-                duration_ms: None,
-            };
-
-            *next_id += 1;
-            out.push(mutant);
-        }
-    }
+    &[
+        // equality / inequality
+        ("==", "eq_to_neq", Condition, "!="),
+        ("!=", "neq_to_eq", Condition, "=="),
+        // ordered comparisons
+        ("<=", "le_to_gt", Condition, ">"),
+        (">=", "ge_to_lt", Condition, "<"),
+        ("<", "lt_to_ge", Condition, ">="),
+        (">", "gt_to_le", Condition, "<="),
+    ]
 }
 
-/// Return true if the candidate span overlaps any span in `used_spans`.
-fn overlaps_existing_span(start: usize, end: usize, used_spans: &[(usize, usize)]) -> bool {
-    used_spans.iter().any(|(s, e)| !(end <= *s || start >= *e))
+/// Return byte ranges corresponding to the bodies of `#[test]` functions.
+///
+/// This is a simple textual heuristic similar to noir-metrics: it looks for
+/// a `#[test...]` attribute followed by `fn ...`, then tracks `{` / `}`
+/// brace depth to find the end of that function body.
+fn find_test_code_ranges(code: &str) -> Vec<Range<usize>> {
+    let mut ranges = Vec::new();
+
+    let mut pending_test_attr = false;
+    let mut inside_test = false;
+    let mut brace_depth: i32 = 0;
+
+    let mut offset: usize = 0;
+    let mut test_start: Option<usize> = None;
+
+    for line in code.lines() {
+        let line_len = line.len();
+        let line_start = offset;
+        let line_end = offset + line_len;
+
+        let trimmed = line.trim_start();
+
+        if trimmed.starts_with("#[test") {
+            pending_test_attr = true;
+        } else if trimmed.starts_with("fn ") || trimmed.starts_with("pub fn ") {
+            if pending_test_attr {
+                pending_test_attr = false;
+                inside_test = true;
+                test_start = Some(line_start);
+                brace_depth = 0;
+            }
+        }
+
+        // Track braces on this line.
+        for ch in line.chars() {
+            match ch {
+                '{' => brace_depth += 1,
+                '}' => brace_depth -= 1,
+                _ => {}
+            }
+        }
+
+        if inside_test && brace_depth == 0 {
+            // End of test function body.
+            let end = line_end + 1; // include trailing newline
+            if let Some(start) = test_start.take() {
+                ranges.push(start..end);
+            }
+            inside_test = false;
+        }
+
+        // Move offset past this line and its newline.
+        offset = line_end + 1;
+    }
+
+    ranges
+}
+
+/// Return true if `pos` lies inside any of the given byte ranges.
+fn in_any_range(pos: usize, ranges: &[Range<usize>]) -> bool {
+    ranges.iter().any(|r| pos >= r.start && pos < r.end)
 }
 
 #[cfg(test)]
@@ -104,32 +163,13 @@ mod tests {
     use crate::project::Project;
     use std::path::PathBuf;
 
-    /// Snapshot of discovered mutants in the `simple_noir` fixture.
     #[test]
-    fn discover_mutants_simple_noir_fixture() {
+    fn discover_simple_noir_fixture() {
         let root = PathBuf::from("tests/fixtures/simple_noir");
         let project = Project::from_root(root).expect("Project::from_root should succeed");
 
         let mutants = discover_mutants(&project);
 
-        insta::assert_debug_snapshot!("discover_simple_noir_mutants", mutants);
-    }
-
-    #[test]
-    fn overlaps_existing_span_works() {
-        let used = vec![(10, 12), (20, 25)];
-
-        // Completely before
-        assert!(!overlaps_existing_span(0, 5, &used));
-
-        // Touching but not overlapping
-        assert!(!overlaps_existing_span(5, 10, &used));
-        assert!(!overlaps_existing_span(12, 15, &used));
-
-        // Overlapping first span
-        assert!(overlaps_existing_span(11, 13, &used));
-
-        // Overlapping second span
-        assert!(overlaps_existing_span(22, 30, &used));
+        insta::assert_debug_snapshot!("discover_simple_noir", mutants);
     }
 }
