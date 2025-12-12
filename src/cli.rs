@@ -3,8 +3,10 @@ use std::path::PathBuf;
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 
+use crate::discover::discover_mutants;
 use crate::nargo::run_nargo_test;
 use crate::options::Options;
+use crate::project::Project;
 use crate::scan::{ProjectOverview, scan_project};
 
 /// Top-level CLI arguments for the `zk-mutant` binary.
@@ -38,7 +40,7 @@ pub enum Command {
     },
 }
 
-/// Parse CLI arguments and print the selected command.
+/// Parse CLI arguments and dispatch the selected command.
 pub fn run() -> Result<()> {
     let cli = Cli::parse();
 
@@ -58,6 +60,8 @@ pub fn run() -> Result<()> {
                     );
                 }
             }
+
+            Ok(())
         }
 
         Command::Run { project } => {
@@ -66,7 +70,20 @@ pub fn run() -> Result<()> {
             println!("zk-mutant: run");
             println!("project: {:?}", options.project_root);
 
-            match run_nargo_test(&options.project_root) {
+            // Load Noir project and metrics via noir-metrics.
+            let project = match Project::from_root(options.project_root.clone()) {
+                Ok(p) => p,
+                Err(e) => {
+                    eprintln!(
+                        "failed to load Noir project at {:?}: {e}",
+                        options.project_root
+                    );
+                    return Ok(());
+                }
+            };
+
+            // Baseline `nargo test` run before mutation testing.
+            match run_nargo_test(project.root()) {
                 Ok(result) => {
                     println!(
                         "nargo test finished in {:?} (exit code: {:?}, success: {})",
@@ -83,19 +100,24 @@ pub fn run() -> Result<()> {
                         if !result.stderr.is_empty() {
                             eprintln!("stderr from nargo:\n{}", result.stderr);
                         }
+
+                        // If baseline tests fail, don't attempt mutation testing.
+                        return Err(anyhow::anyhow!("baseline `nargo test` failed"));
                     }
                 }
                 Err(e) => {
-                    eprintln!(
-                        "failed to run `nargo test` in {:?}: {e}",
-                        options.project_root
-                    );
+                    eprintln!("failed to run `nargo test` in {:?}: {e}", project.root());
+                    return Err(e);
                 }
             }
+
+            // Discover mutation opportunities.
+            let mutants = discover_mutants(&project);
+            println!("discovered {} mutants", mutants.len());
+
+            Ok(())
         }
     }
-
-    Ok(())
 }
 
 /// Print a short summary based on the project overview.
