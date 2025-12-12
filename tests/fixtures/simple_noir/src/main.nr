@@ -1,7 +1,10 @@
+mod utils;
+
 fn main(x: u64, y: pub u64) {
     assert(x < y);
     // test comment
     assert(x != y);
+    utils::check_addition(1, 2);
 }
 
 #[test]
