@@ -8,6 +8,7 @@ anyhow = "1"
 clap = { version = "4", features = ["derive"] }
 noir-metrics = "0.1.0"
 serde = { version = "1", features = ["derive"] }
+tempfile = "3"
 
 [dev-dependencies]
 insta = { version = "1", features = ["json"] }
