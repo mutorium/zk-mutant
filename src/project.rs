@@ -32,13 +32,22 @@ impl Project {
         &self.metrics
     }
 
-    /// build `SourceFile` entries for all `.nr` files in the project.
+    /// Build `SourceFile` entries for all `.nr` files in the project.
     pub fn source_files(&self) -> Vec<SourceFile> {
         self.metrics
             .files
             .iter()
             .map(|fm| SourceFile::from_relative(&self.root, &fm.path))
             .collect()
+    }
+
+    /// Look up a source file by its project-relative path (for example `src/main.nr`).
+    pub fn find_source(&self, rel: &std::path::Path) -> Option<SourceFile> {
+        self.metrics
+            .files
+            .iter()
+            .find(|fm| fm.path == rel)
+            .map(|fm| SourceFile::from_relative(&self.root, &fm.path))
     }
 }
 
@@ -65,5 +74,23 @@ mod tests {
                 src.path()
             );
         }
+    }
+
+    #[test]
+    fn find_source_returns_expected_file() {
+        let root = PathBuf::from("tests/fixtures/simple_noir");
+        let project = Project::from_root(root.clone()).expect("Project::from_root should succeed");
+
+        let rel = std::path::Path::new("src/main.nr");
+        let src = project
+            .find_source(rel)
+            .expect("find_source should return Some for existing file");
+
+        assert_eq!(src.relative_path(), rel);
+        assert!(
+            src.path().exists(),
+            "absolute path should exist on disk: {:?}",
+            src.path()
+        );
     }
 }
