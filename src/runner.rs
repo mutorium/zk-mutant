@@ -4,6 +4,7 @@ use anyhow::{Context, Result};
 use tempfile::TempDir;
 
 use crate::mutant::Mutant;
+use crate::nargo::{NargoTestResult, run_nargo_test};
 use crate::patch::apply_span_patch;
 use crate::project::Project;
 
@@ -70,6 +71,26 @@ pub fn apply_mutant_in_temp_tree(temp_root: &Path, mutant: &Mutant) -> Result<()
     })?;
 
     Ok(())
+}
+
+/// Run `nargo test` on a temporary copy of the project with a single mutant applied.
+///
+/// The original project on disk is not modified. A fresh temp directory is
+/// created, the whole project is copied there, the given mutant is written into
+/// the corresponding file, and then `nargo test` is executed in that temp tree.
+pub fn run_single_mutant_in_temp(project: &Project, mutant: &Mutant) -> Result<NargoTestResult> {
+    // 1. Copy the whole project into a temp directory.
+    let temp = copy_project_to_temp(project)?;
+    let temp_root = temp.path();
+
+    // 2. Apply the mutant in the temp tree.
+    apply_mutant_in_temp_tree(temp_root, mutant)?;
+
+    // 3. Run `nargo test` in the temp project directory.
+    let result = run_nargo_test(temp_root)?;
+
+    // TempDir is dropped here; the directory is cleaned up automatically.
+    Ok(result)
 }
 
 /// Recursively copy all files and directories from `src` into `dst`.

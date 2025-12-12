@@ -7,6 +7,7 @@ use crate::discover::discover_mutants;
 use crate::nargo::run_nargo_test;
 use crate::options::Options;
 use crate::project::Project;
+use crate::runner::run_single_mutant_in_temp;
 use crate::scan::{ProjectOverview, scan_project};
 
 /// Top-level CLI arguments for the `zk-mutant` binary.
@@ -114,6 +115,36 @@ pub fn run() -> Result<()> {
             // Discover mutation opportunities.
             let mutants = discover_mutants(&project);
             println!("discovered {} mutants", mutants.len());
+
+            if mutants.is_empty() {
+                println!("no mutants discovered; nothing to run");
+                return Ok(());
+            }
+
+            // For now, run just the first mutant in a temp project copy.
+            let first = &mutants[0];
+            println!(
+                "running first mutant {} in {:?} at bytes {}..{} ({})",
+                first.id, first.span.file, first.span.start, first.span.end, first.operator.name,
+            );
+
+            match run_single_mutant_in_temp(&project, first) {
+                Ok(mutant_result) => {
+                    println!(
+                        "mutant run: duration {:?}, exit code {:?}, success: {}",
+                        mutant_result.duration, mutant_result.exit_code, mutant_result.success
+                    );
+
+                    if mutant_result.success {
+                        println!("mutant survived (tests still passed)");
+                    } else {
+                        println!("mutant killed (tests failed under mutation)");
+                    }
+                }
+                Err(e) => {
+                    eprintln!("failed to run mutant in temp project: {e}");
+                }
+            }
 
             Ok(())
         }
