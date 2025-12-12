@@ -4,6 +4,7 @@ mod nargo;
 mod options;
 mod project;
 mod scan;
+mod source;
 mod span;
 
 /// Entry point for the `zk-mutant` binary.
