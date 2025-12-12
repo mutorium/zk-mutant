@@ -5,6 +5,7 @@ mod nargo;
 mod options;
 mod patch;
 mod project;
+mod runner;
 mod scan;
 mod source;
 mod span;
