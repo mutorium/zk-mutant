@@ -1,0 +1,8 @@
+---
+source: src/report.rs
+expression: "render_surviving_mutants(&project, &mutants)"
+---
+[
+    "--- surviving mutants (1 of 2) ---",
+    "#2 src/utils.nr:1:1-1:3 Condition/eq_to_neq: \"==\" -> \"!=\"",
+]
