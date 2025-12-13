@@ -2,7 +2,6 @@ use crate::mutant::{Mutant, MutantOutcome};
 use crate::project::Project;
 
 /// Print a detailed list of all mutants and their outcomes.
-#[allow(dead_code)]
 pub fn print_all_mutants(project: &Project, mutants: &[Mutant]) {
     if mutants.is_empty() {
         return;

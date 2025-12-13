@@ -7,7 +7,7 @@ use crate::discover::discover_mutants;
 use crate::nargo::run_nargo_test;
 use crate::options::Options;
 use crate::project::Project;
-use crate::report::print_surviving_mutants;
+use crate::report::{print_all_mutants, print_surviving_mutants};
 use crate::runner::run_all_mutants_in_temp;
 use crate::scan::{ProjectOverview, scan_project};
 
@@ -39,6 +39,10 @@ pub enum Command {
         /// Path to the Noir project root or any path inside it.
         #[arg(long, default_value = ".")]
         project: PathBuf,
+
+        /// Print a detailed list of all mutants and their outcomes.
+        #[arg(long, short = 'v')]
+        verbose: bool,
     },
 }
 
@@ -66,7 +70,7 @@ pub fn run() -> Result<()> {
             Ok(())
         }
 
-        Command::Run { project } => {
+        Command::Run { project, verbose } => {
             let options = Options::new(project);
 
             println!("zk-mutant: run");
@@ -130,6 +134,10 @@ pub fn run() -> Result<()> {
             println!("mutants killed:   {}", summary.killed);
             println!("mutants survived: {}", summary.survived);
             println!("mutants invalid:  {}", summary.invalid);
+
+            if verbose {
+                print_all_mutants(&project, &mutants);
+            }
 
             // Extra observability: list surviving mutants with their textual change.
             print_surviving_mutants(&project, &mutants);
