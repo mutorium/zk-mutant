@@ -28,9 +28,12 @@ pub fn discover_mutants(project: &Project) -> Vec<Mutant> {
                 let start = search_start + idx;
                 let end = start + pattern.len();
 
+                // Keeps the search making progress even if `end` is wrong (e.g. under mutation).
+                let next_search_start = end.max(start.saturating_add(1)).min(code.len());
+
                 // Skip operators that live inside #[test] functions.
                 if in_any_range(start, &test_ranges) {
-                    search_start = end;
+                    search_start = next_search_start;
                     continue;
                 }
 
@@ -54,7 +57,7 @@ pub fn discover_mutants(project: &Project) -> Vec<Mutant> {
                 };
 
                 mutants.push(mutant);
-                search_start = end;
+                search_start = next_search_start;
             }
         }
     }
