@@ -29,7 +29,12 @@ pub fn discover_mutants(project: &Project) -> Vec<Mutant> {
                 let end = start + pattern.len();
 
                 // Keeps the search making progress even if `end` is wrong (e.g. under mutation).
-                let next_search_start = advance_search_start(start, end, code.len());
+                let mut next_search_start = advance_search_start(start, end, code.len());
+
+                // Ensure forward progress even if `advance_search_start` is wrong (e.g. under mutation).
+                if next_search_start <= search_start {
+                    next_search_start = search_start.saturating_add(1).min(code.len());
+                }
 
                 // Skip operators that live inside #[test] functions.
                 if in_any_range(start, &test_ranges) {
