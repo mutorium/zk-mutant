@@ -1,0 +1,58 @@
+---
+source: src/runner.rs
+expression: mutants
+---
+[
+    Mutant {
+        id: 1,
+        operator: MutationOperator {
+            category: Condition,
+            name: "lt_to_ge",
+        },
+        span: SourceSpan {
+            file: "src/main.nr",
+            start: 0,
+            end: 1,
+        },
+        original_snippet: "<",
+        mutated_snippet: ">=",
+        outcome: Killed,
+        duration_ms: Some(
+            10,
+        ),
+    },
+    Mutant {
+        id: 2,
+        operator: MutationOperator {
+            category: Condition,
+            name: "eq_to_neq",
+        },
+        span: SourceSpan {
+            file: "src/utils.nr",
+            start: 0,
+            end: 2,
+        },
+        original_snippet: "==",
+        mutated_snippet: "!=",
+        outcome: Survived,
+        duration_ms: Some(
+            20,
+        ),
+    },
+    Mutant {
+        id: 3,
+        operator: MutationOperator {
+            category: Condition,
+            name: "neq_to_eq",
+        },
+        span: SourceSpan {
+            file: "src/main.nr",
+            start: 10,
+            end: 12,
+        },
+        original_snippet: "!=",
+        mutated_snippet: "==",
+        outcome: Invalid,
+        duration_ms: None,
+    },
+]

@@ -92,14 +92,25 @@ pub struct RunSummary {
 
 /// Naive driver: run all mutants, copying the project for each one.
 ///
-/// This is intentionally simple for v0.1: for every mutant, we call
-/// [`run_single_mutant_in_temp`], classify the outcome, and update the
-/// `Mutant`'s `outcome` and `duration_ms` fields.
+/// For every mutant, this runs [`run_single_mutant_in_temp`], classifies the
+/// outcome, and updates the `Mutant`'s `outcome` and `duration_ms` fields.
 pub fn run_all_mutants_in_temp(project: &Project, mutants: &mut [Mutant]) -> Result<RunSummary> {
+    run_all_mutants_with(project, mutants, run_single_mutant_in_temp)
+}
+
+/// Run all mutants using the provided per-mutant runner.
+///
+/// This updates each `Mutant`'s `outcome` and `duration_ms` in-place and returns
+/// a [`RunSummary`] with the counts.
+fn run_all_mutants_with(
+    project: &Project,
+    mutants: &mut [Mutant],
+    run_one: fn(&Project, &Mutant) -> Result<NargoTestResult>,
+) -> Result<RunSummary> {
     let mut summary = RunSummary::default();
 
     for m in mutants.iter_mut() {
-        let result = match run_single_mutant_in_temp(project, m) {
+        let result = match run_one(project, m) {
             Ok(r) => r,
             Err(e) => {
                 eprintln!(
@@ -152,7 +163,10 @@ fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<()> {
 mod tests {
     use super::*;
     use crate::discover::discover_mutants;
+    use crate::mutant::{MutationOperator, OperatorCategory};
+    use crate::span::SourceSpan;
     use std::path::PathBuf;
+    use std::time::Duration;
 
     fn apply_mutant_in_memory(project: &Project, mutant: &Mutant) -> anyhow::Result<String> {
         let source = project.find_source(&mutant.span.file).ok_or_else(|| {
@@ -180,7 +194,6 @@ mod tests {
             "expected discover_mutants to find at least one mutant"
         );
 
-        // Use the first mutant; ordering is deterministic.
         let m = &mutants[0];
 
         let mutated =
@@ -229,6 +242,7 @@ mod tests {
             );
         }
     }
+
     #[test]
     fn apply_mutant_in_temp_tree_mutates_copied_file() {
         let root = PathBuf::from("tests/fixtures/simple_noir");
@@ -240,17 +254,13 @@ mod tests {
             "expected discover_mutants to find at least one mutant"
         );
 
-        // Use the first mutant; ordering is deterministic.
         let m = &mutants[0];
 
-        // Copy the project to a temp tree.
         let temp = copy_project_to_temp(&project).expect("copy_project_to_temp should succeed");
         let temp_root = temp.path();
 
-        // Apply the mutation in the temp tree.
         apply_mutant_in_temp_tree(temp_root, m).expect("apply_mutant_in_temp_tree should succeed");
 
-        // Read back the mutated file from the temp tree.
         let temp_file_path = temp_root.join(&m.span.file);
         let mutated_contents =
             std::fs::read_to_string(&temp_file_path).expect("failed to read mutated temp file");
@@ -270,5 +280,89 @@ mod tests {
             slice_str, m.mutated_snippet,
             "mutated snippet not present at expected span in temp file"
         );
+    }
+
+    #[test]
+    fn run_all_mutants_updates_outcomes_and_summary() {
+        let root = PathBuf::from("tests/fixtures/simple_noir");
+        let project = Project::from_root(root).expect("Project::from_root should succeed");
+
+        let mut mutants = vec![
+            Mutant {
+                id: 1,
+                operator: MutationOperator {
+                    category: OperatorCategory::Condition,
+                    name: "lt_to_ge".to_string(),
+                },
+                span: SourceSpan {
+                    file: PathBuf::from("src/main.nr"),
+                    start: 0,
+                    end: 1,
+                },
+                original_snippet: "<".to_string(),
+                mutated_snippet: ">=".to_string(),
+                outcome: MutantOutcome::NotRun,
+                duration_ms: None,
+            },
+            Mutant {
+                id: 2,
+                operator: MutationOperator {
+                    category: OperatorCategory::Condition,
+                    name: "eq_to_neq".to_string(),
+                },
+                span: SourceSpan {
+                    file: PathBuf::from("src/utils.nr"),
+                    start: 0,
+                    end: 2,
+                },
+                original_snippet: "==".to_string(),
+                mutated_snippet: "!=".to_string(),
+                outcome: MutantOutcome::NotRun,
+                duration_ms: None,
+            },
+            Mutant {
+                id: 3,
+                operator: MutationOperator {
+                    category: OperatorCategory::Condition,
+                    name: "neq_to_eq".to_string(),
+                },
+                span: SourceSpan {
+                    file: PathBuf::from("src/main.nr"),
+                    start: 10,
+                    end: 12,
+                },
+                original_snippet: "!=".to_string(),
+                mutated_snippet: "==".to_string(),
+                outcome: MutantOutcome::NotRun,
+                duration_ms: None,
+            },
+        ];
+
+        fn fake_run_one(_project: &Project, m: &Mutant) -> Result<NargoTestResult> {
+            match m.id {
+                1 => Ok(NargoTestResult {
+                    exit_code: Some(1),
+                    success: false,
+                    stdout: String::new(),
+                    stderr: String::new(),
+                    duration: Duration::from_millis(10),
+                }),
+                2 => Ok(NargoTestResult {
+                    exit_code: Some(0),
+                    success: true,
+                    stdout: String::new(),
+                    stderr: String::new(),
+                    duration: Duration::from_millis(20),
+                }),
+                3 => Err(anyhow::anyhow!("simulated failure")),
+                _ => unreachable!("unexpected mutant id"),
+            }
+        }
+
+        let summary =
+            run_all_mutants_with(&project, &mut mutants, fake_run_one).expect("should succeed");
+
+        insta::assert_debug_snapshot!("run_all_mutants_summary", summary);
+        insta::assert_debug_snapshot!("run_all_mutants_mutants", mutants);
     }
 }

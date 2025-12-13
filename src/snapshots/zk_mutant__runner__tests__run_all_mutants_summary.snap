@@ -1,0 +1,9 @@
+---
+source: src/runner.rs
+expression: summary
+---
+RunSummary {
+    killed: 1,
+    survived: 1,
+    invalid: 1,
+}
