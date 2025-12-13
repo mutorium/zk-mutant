@@ -132,7 +132,7 @@ pub fn run() -> Result<()> {
             println!("mutants invalid:  {}", summary.invalid);
 
             // Extra observability: list surviving mutants with their textual change.
-            print_surviving_mutants(&mutants);
+            print_surviving_mutants(&project, &mutants);
 
             Ok(())
         }
