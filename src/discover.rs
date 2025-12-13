@@ -186,6 +186,76 @@ mod tests {
         insta::assert_debug_snapshot!("discover_simple_noir", mutants);
     }
 
+    fn find_all_positions(haystack: &str, needle: &str) -> Vec<usize> {
+        let mut out = Vec::new();
+        let mut pos = 0;
+
+        while let Some(idx) = haystack[pos..].find(needle) {
+            let abs = pos + idx;
+            out.push(abs);
+            pos = abs + needle.len();
+        }
+
+        out
+    }
+
+    #[test]
+    fn test_ranges_cover_test_function_and_exclude_non_test() {
+        // Intentionally include the same operator inside a test function and a non-test function.
+        let code = r#"
+#[test]
+fn test_one() {
+    let x = 1;
+    let y = 2;
+    if x < y {
+        assert(x == y);
+    }
+}
+
+fn helper() {
+    let a = 1;
+    let b = 1;
+    assert(a == b);
+}
+"#;
+
+        let ranges = find_test_code_ranges(code);
+        assert_eq!(ranges.len(), 1, "expected exactly one test range");
+
+        let positions = find_all_positions(code, "==");
+        assert_eq!(positions.len(), 2, "expected two '==' occurrences");
+
+        let pos_in_test = positions[0];
+        let pos_in_non_test = positions[1];
+
+        assert!(
+            in_any_range(pos_in_test, &ranges),
+            "expected first '==' to be inside test range"
+        );
+
+        assert!(
+            !in_any_range(pos_in_non_test, &ranges),
+            "expected second '==' to be outside test range"
+        );
+    }
+
+    #[test]
+    fn in_any_range_is_start_inclusive_end_exclusive() {
+        let code = r#"
+#[test]
+fn t() {
+    assert(1 == 2);
+}
+"#;
+
+        let ranges = find_test_code_ranges(code);
+        assert_eq!(ranges.len(), 1);
+
+        let r = &ranges[0];
+        assert!(in_any_range(r.start, &ranges), "start should be included");
+        assert!(!in_any_range(r.end, &ranges), "end should be excluded");
+    }
+
     #[test]
     fn advance_search_start_makes_progress_and_stays_in_bounds() {
         assert_eq!(advance_search_start(10, 12, 100), 12);
