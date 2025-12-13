@@ -1,21 +1,39 @@
 use crate::mutant::{Mutant, MutantOutcome};
 use crate::project::Project;
 
+/// Print a detailed list of all mutants and their outcomes.
+#[allow(dead_code)]
+pub fn print_all_mutants(project: &Project, mutants: &[Mutant]) {
+    if mutants.is_empty() {
+        return;
+    }
+
+    let ordered = collect_sorted(mutants.iter());
+
+    println!("--- mutants (detailed) ---");
+    for m in ordered {
+        let outcome = outcome_label(&m.outcome);
+        let duration = duration_label(m.duration_ms);
+        let base = format_mutant_with_location(project, m);
+
+        println!("{:>8} {:>8} {}", outcome, duration, base);
+    }
+}
+
 /// Print a short list of surviving mutants.
 ///
-/// The output includes file path, byte span, operator name, and the textual
+/// The output includes file path, line/column range, operator name, and the textual
 /// replacement (original -> mutated).
 pub fn print_surviving_mutants(project: &Project, mutants: &[Mutant]) {
-    let mut survivors: Vec<&Mutant> = mutants
-        .iter()
-        .filter(|m| m.outcome == MutantOutcome::Survived)
-        .collect();
+    let survivors = collect_sorted(
+        mutants
+            .iter()
+            .filter(|m| m.outcome == MutantOutcome::Survived),
+    );
 
     if survivors.is_empty() {
         return;
     }
-
-    survivors.sort_by_key(|m| m.id);
 
     println!(
         "--- surviving mutants ({} of {}) ---",
@@ -25,6 +43,28 @@ pub fn print_surviving_mutants(project: &Project, mutants: &[Mutant]) {
 
     for m in survivors {
         println!("{}", format_mutant_with_location(project, m));
+    }
+}
+
+fn collect_sorted<'a>(iter: impl Iterator<Item = &'a Mutant>) -> Vec<&'a Mutant> {
+    let mut v: Vec<&'a Mutant> = iter.collect();
+    v.sort_by_key(|m| m.id);
+    v
+}
+
+fn outcome_label(outcome: &MutantOutcome) -> &'static str {
+    match outcome {
+        MutantOutcome::NotRun => "not_run",
+        MutantOutcome::Killed => "killed",
+        MutantOutcome::Survived => "survived",
+        MutantOutcome::Invalid => "invalid",
+    }
+}
+
+fn duration_label(duration_ms: Option<u64>) -> String {
+    match duration_ms {
+        Some(ms) => format!("{ms}ms"),
+        None => "-".to_string(),
     }
 }
 
