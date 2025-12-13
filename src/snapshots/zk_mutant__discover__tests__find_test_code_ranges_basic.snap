@@ -1,0 +1,7 @@
+---
+source: src/discover.rs
+expression: ranges
+---
+[
+    42..70,
+]

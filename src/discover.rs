@@ -186,6 +186,22 @@ mod tests {
         insta::assert_debug_snapshot!("discover_simple_noir", mutants);
     }
 
+    #[test]
+    fn find_test_code_ranges_snapshot_basic() {
+        let code = "fn helper() {\n\
+                    \tassert(1 == 1);\n\
+                    }\n\
+                    \n\
+                    #[test]\n\
+                    fn t() {\n\
+                    \tassert(2 == 2);\n\
+                    }\n";
+
+        let ranges = find_test_code_ranges(code);
+
+        insta::assert_debug_snapshot!("find_test_code_ranges_basic", ranges);
+    }
+
     fn find_all_positions(haystack: &str, needle: &str) -> Vec<usize> {
         let mut out = Vec::new();
         let mut pos = 0;
