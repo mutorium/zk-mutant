@@ -29,7 +29,7 @@ pub fn discover_mutants(project: &Project) -> Vec<Mutant> {
                 let end = start + pattern.len();
 
                 // Keeps the search making progress even if `end` is wrong (e.g. under mutation).
-                let next_search_start = end.max(start.saturating_add(1)).min(code.len());
+                let next_search_start = advance_search_start(start, end, code.len());
 
                 // Skip operators that live inside #[test] functions.
                 if in_any_range(start, &test_ranges) {
@@ -160,6 +160,11 @@ fn in_any_range(pos: usize, ranges: &[Range<usize>]) -> bool {
     ranges.iter().any(|r| pos >= r.start && pos < r.end)
 }
 
+/// Compute the next `search_start` for a textual pattern scan.
+fn advance_search_start(start: usize, end: usize, code_len: usize) -> usize {
+    end.max(start.saturating_add(1)).min(code_len)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -174,5 +179,15 @@ mod tests {
         let mutants = discover_mutants(&project);
 
         insta::assert_debug_snapshot!("discover_simple_noir", mutants);
+    }
+
+    #[test]
+    fn advance_search_start_makes_progress_and_stays_in_bounds() {
+        assert_eq!(advance_search_start(10, 12, 100), 12);
+        assert_eq!(advance_search_start(10, 10, 100), 11);
+        assert_eq!(advance_search_start(10, 9, 100), 11);
+        assert_eq!(advance_search_start(10, 500, 100), 100);
+        assert_eq!(advance_search_start(99, 99, 100), 100);
+        assert_eq!(advance_search_start(100, 100, 100), 100);
     }
 }
