@@ -1,0 +1,19 @@
+---
+source: tests/cli_integration.rs
+expression: out
+---
+status: exit status: 0
+--- stdout ---
+Mutation testing for Noir circuits
+
+Usage: zk-mutant <COMMAND>
+
+Commands:
+  scan  Run a scan of the project
+  run   Run mutation testing
+  help  Print this message or the help of the given subcommand(s)
+
+Options:
+  -h, --help     Print help
+  -V, --version  Print version
+--- stderr ---

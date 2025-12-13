@@ -1,0 +1,18 @@
+---
+source: tests/cli_integration.rs
+expression: out
+---
+status: exit status: 0
+--- stdout ---
+zk-mutant: scan
+project: "tests/fixtures/simple_noir"
+--- project overview ---
+project root:            tests/fixtures/simple_noir
+nr files (.nr):          2
+test files:              0
+code lines:              24
+test functions:          3
+test code lines:         12
+non-test code lines:     12
+test code ratio:         50.00% (test_lines / code_lines)
+--- stderr ---

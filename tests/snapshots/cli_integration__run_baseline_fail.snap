@@ -1,0 +1,15 @@
+---
+source: tests/cli_integration.rs
+expression: out
+---
+status: exit status: 1
+--- stdout ---
+zk-mutant: run
+project: "tests/fixtures/simple_noir"
+nargo test finished in <DUR> (exit code: Some(1), success: false)
+--- stderr ---
+nargo test failed
+stderr from nargo:
+fake nargo: failing as requested
+
+Error: baseline `nargo test` failed

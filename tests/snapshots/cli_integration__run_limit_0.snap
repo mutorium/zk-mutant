@@ -1,0 +1,12 @@
+---
+source: tests/cli_integration.rs
+expression: out
+---
+status: exit status: 0
+--- stdout ---
+zk-mutant: run
+project: "tests/fixtures/simple_noir"
+nargo test finished in <DUR> (exit code: Some(0), success: true)
+discovered 4 mutants
+mutant limit is 0, exiting
+--- stderr ---

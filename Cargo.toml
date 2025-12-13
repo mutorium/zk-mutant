@@ -11,4 +11,6 @@ serde = { version = "1", features = ["derive"] }
 tempfile = "3"
 
 [dev-dependencies]
+assert_cmd = "2"
+regex = "1"
 insta = { version = "1", features = ["json"] }
