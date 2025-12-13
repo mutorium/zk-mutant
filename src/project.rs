@@ -27,11 +27,6 @@ impl Project {
         &self.root
     }
 
-    /// Access the underlying noir-metrics report.
-    pub fn metrics(&self) -> &MetricsReport {
-        &self.metrics
-    }
-
     /// Build `SourceFile` entries for all `.nr` files in the project.
     pub fn source_files(&self) -> Vec<SourceFile> {
         self.metrics

@@ -5,29 +5,8 @@ use tempfile::TempDir;
 
 use crate::mutant::{Mutant, MutantOutcome};
 use crate::nargo::{NargoTestResult, run_nargo_test};
-use crate::patch::apply_span_patch;
+use crate::patch::apply_checked_patch;
 use crate::project::Project;
-
-/// Apply a single mutant to its source file and return the mutated source code.
-///
-/// This helper reads the original file from disk and returns a mutated
-/// version of its contents as a string. It does not modify any files.
-pub fn apply_mutant_in_memory(project: &Project, mutant: &Mutant) -> Result<String> {
-    // Look up the corresponding source file in the project.
-    let source = project
-        .find_source(&mutant.span.file)
-        .ok_or_else(|| anyhow::anyhow!("source file {:?} not part of project", mutant.span.file))?;
-
-    // Load the original contents.
-    let original = source
-        .read_to_string()
-        .with_context(|| format!("failed to read source file {:?}", source.path()))?;
-
-    // Apply the textual patch at the recorded span.
-    let mutated = apply_span_patch(&original, &mutant.span, &mutant.mutated_snippet);
-
-    Ok(mutated)
-}
 
 /// Copy the entire Noir project into a fresh temporary directory.
 ///
@@ -61,7 +40,12 @@ pub fn apply_mutant_in_temp_tree(temp_root: &Path, mutant: &Mutant) -> Result<()
         )
     })?;
 
-    let mutated = apply_span_patch(&original, &mutant.span, &mutant.mutated_snippet);
+    let mutated = apply_checked_patch(
+        &original,
+        &mutant.span,
+        &mutant.original_snippet,
+        &mutant.mutated_snippet,
+    );
 
     fs::write(&temp_file_path, mutated).with_context(|| {
         format!(
@@ -168,8 +152,22 @@ fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<()> {
 mod tests {
     use super::*;
     use crate::discover::discover_mutants;
-    use crate::project::Project;
     use std::path::PathBuf;
+
+    fn apply_mutant_in_memory(project: &Project, mutant: &Mutant) -> anyhow::Result<String> {
+        let source = project.find_source(&mutant.span.file).ok_or_else(|| {
+            anyhow::anyhow!("source file {:?} not part of project", mutant.span.file)
+        })?;
+
+        let original = source.read_to_string()?;
+
+        Ok(apply_checked_patch(
+            &original,
+            &mutant.span,
+            &mutant.original_snippet,
+            &mutant.mutated_snippet,
+        ))
+    }
 
     #[test]
     fn apply_mutant_rewrites_recorded_span() {
@@ -213,7 +211,7 @@ mod tests {
         let temp = copy_project_to_temp(&project).expect("copy_project_to_temp should succeed");
         let temp_root = temp.path();
 
-        for fm in &project.metrics().files {
+        for fm in &project.metrics.files {
             let orig = project.root().join(&fm.path);
             let copy = temp_root.join(&fm.path);
 
