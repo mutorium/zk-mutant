@@ -2,17 +2,25 @@ use crate::mutant::{Mutant, MutantOutcome};
 use crate::project::Project;
 
 /// Print a detailed list of all mutants and their outcomes.
-pub fn print_all_mutants(project: &Project, mutants: &[Mutant]) {
-    for line in render_all_mutants(project, mutants) {
+///
+/// Returns the rendered lines that were printed.
+pub fn print_all_mutants(project: &Project, mutants: &[Mutant]) -> Vec<String> {
+    let lines = render_all_mutants(project, mutants);
+    for line in &lines {
         println!("{line}");
     }
+    lines
 }
 
 /// Print a short list of surviving mutants.
-pub fn print_surviving_mutants(project: &Project, mutants: &[Mutant]) {
-    for line in render_surviving_mutants(project, mutants) {
+///
+/// Returns the rendered lines that were printed.
+pub fn print_surviving_mutants(project: &Project, mutants: &[Mutant]) -> Vec<String> {
+    let lines = render_surviving_mutants(project, mutants);
+    for line in &lines {
         println!("{line}");
     }
+    lines
 }
 
 /// Render a detailed list of all mutants and their outcomes.
@@ -186,7 +194,53 @@ mod tests {
     }
 
     #[test]
-    fn render_survivors_snapshot_fixture() {
+    fn print_all_mutants_snapshot_fixture() {
+        let root = PathBuf::from("tests/fixtures/simple_noir");
+        let project = Project::from_root(root).expect("Project::from_root should succeed");
+
+        let mutants = vec![
+            Mutant {
+                id: 2,
+                operator: MutationOperator {
+                    category: OperatorCategory::Condition,
+                    name: "eq_to_neq".to_string(),
+                },
+                span: SourceSpan {
+                    file: PathBuf::from("src/utils.nr"),
+                    start: 0,
+                    end: 2,
+                },
+                original_snippet: "==".to_string(),
+                mutated_snippet: "!=".to_string(),
+                outcome: MutantOutcome::Survived,
+                duration_ms: Some(20),
+            },
+            Mutant {
+                id: 1,
+                operator: MutationOperator {
+                    category: OperatorCategory::Condition,
+                    name: "lt_to_ge".to_string(),
+                },
+                span: SourceSpan {
+                    file: PathBuf::from("src/main.nr"),
+                    start: 0,
+                    end: 1,
+                },
+                original_snippet: "<".to_string(),
+                mutated_snippet: ">=".to_string(),
+                outcome: MutantOutcome::Killed,
+                duration_ms: Some(10),
+            },
+        ];
+
+        insta::assert_debug_snapshot!(
+            "print_all_mutants_lines",
+            print_all_mutants(&project, &mutants)
+        );
+    }
+
+    #[test]
+    fn print_surviving_mutants_snapshot_fixture() {
         let root = PathBuf::from("tests/fixtures/simple_noir");
         let project = Project::from_root(root).expect("Project::from_root should succeed");
 
@@ -225,6 +279,62 @@ mod tests {
             },
         ];
 
+        insta::assert_debug_snapshot!(
+            "print_surviving_mutants_lines",
+            print_surviving_mutants(&project, &mutants)
+        );
+    }
+
+    #[test]
+    fn byte_offset_to_line_col_basic() {
+        let code = "a\nbcd\nef";
+        assert_eq!(byte_offset_to_line_col(code, 0), Some((1, 1)));
+        assert_eq!(byte_offset_to_line_col(code, 1), Some((1, 2)));
+        assert_eq!(byte_offset_to_line_col(code, 2), Some((2, 1)));
+        assert_eq!(byte_offset_to_line_col(code, 4), Some((2, 3)));
+        assert_eq!(byte_offset_to_line_col(code, 6), Some((3, 1)));
+        assert_eq!(byte_offset_to_line_col(code, code.len()), Some((3, 3)));
+        assert_eq!(byte_offset_to_line_col(code, code.len() + 1), None);
+    }
+
+    #[test]
+    fn render_survivors_snapshot_fixture() {
+        let root = PathBuf::from("tests/fixtures/simple_noir");
+        let project = Project::from_root(root).expect("Project::from_root should succeed");
+        let mutants = vec![
+            Mutant {
+                id: 1,
+                operator: MutationOperator {
+                    category: OperatorCategory::Condition,
+                    name: "lt_to_ge".to_string(),
+                },
+                span: SourceSpan {
+                    file: PathBuf::from("src/main.nr"),
+                    start: 0,
+                    end: 1,
+                },
+                original_snippet: "<".to_string(),
+                mutated_snippet: ">=".to_string(),
+                outcome: MutantOutcome::Killed,
+                duration_ms: Some(10),
+            },
+            Mutant {
+                id: 2,
+                operator: MutationOperator {
+                    category: OperatorCategory::Condition,
+                    name: "eq_to_neq".to_string(),
+                },
+                span: SourceSpan {
+                    file: PathBuf::from("src/utils.nr"),
+                    start: 0,
+                    end: 2,
+                },
+                original_snippet: "==".to_string(),
+                mutated_snippet: "!=".to_string(),
+                outcome: MutantOutcome::Survived,
+                duration_ms: Some(20),
+            },
+        ];
         insta::assert_debug_snapshot!(
             "render_surviving_mutants",
             render_surviving_mutants(&project, &mutants)

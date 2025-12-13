@@ -1,0 +1,9 @@
+---
+source: src/report.rs
+expression: "print_all_mutants(&project, &mutants)"
+---
+[
+    "--- mutants (detailed) ---",
+    "  killed     10ms #1 src/main.nr:1:1-1:2 Condition/lt_to_ge: \"<\" -> \">=\"",
+    "survived     20ms #2 src/utils.nr:1:1-1:3 Condition/eq_to_neq: \"==\" -> \"!=\"",
+]
