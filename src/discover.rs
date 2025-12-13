@@ -126,13 +126,13 @@ fn find_test_code_ranges(code: &str) -> Vec<Range<usize>> {
 
         if trimmed.starts_with("#[test") {
             pending_test_attr = true;
-        } else if trimmed.starts_with("fn ") || trimmed.starts_with("pub fn ") {
-            if pending_test_attr {
-                pending_test_attr = false;
-                inside_test = true;
-                test_start = Some(line_start);
-                brace_depth = 0;
-            }
+        } else if (trimmed.starts_with("fn ") || trimmed.starts_with("pub fn "))
+            && pending_test_attr
+        {
+            pending_test_attr = false;
+            inside_test = true;
+            test_start = Some(line_start);
+            brace_depth = 0;
         }
 
         // Track braces on this line.
