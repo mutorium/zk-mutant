@@ -43,6 +43,10 @@ pub enum Command {
         /// Print a detailed list of all mutants and their outcomes.
         #[arg(long, short = 'v')]
         verbose: bool,
+
+        /// Run only the first N discovered mutants (deterministic order).
+        #[arg(long)]
+        limit: Option<usize>,
     },
 }
 
@@ -70,7 +74,11 @@ pub fn run() -> Result<()> {
             Ok(())
         }
 
-        Command::Run { project, verbose } => {
+        Command::Run {
+            project,
+            verbose,
+            limit,
+        } => {
             let options = Options::new(project);
 
             println!("zk-mutant: run");
@@ -119,11 +127,25 @@ pub fn run() -> Result<()> {
 
             // Discover mutation opportunities.
             let mut mutants = discover_mutants(&project);
-            println!("discovered {} mutants", mutants.len());
+            let discovered = mutants.len();
+            println!("discovered {} mutants", discovered);
 
-            if mutants.is_empty() {
+            if discovered == 0 {
                 println!("no mutants discovered, exiting");
                 return Ok(());
+            }
+
+            if let Some(limit) = limit {
+                if limit == 0 {
+                    println!("mutant limit is 0, exiting");
+                    return Ok(());
+                }
+
+                if mutants.len() > limit {
+                    mutants.truncate(limit);
+                }
+
+                println!("running {} mutants (of {})", mutants.len(), discovered);
             }
 
             // Run all mutants sequentially (naive implementation).
