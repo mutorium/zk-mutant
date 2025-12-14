@@ -1,5 +1,6 @@
 use assert_cmd::Command;
 use regex::Regex;
+use serde_json::Value;
 use std::ffi::OsString;
 use std::fs;
 use std::path::Path;
@@ -156,6 +157,33 @@ fn run_zk_mutant_stdout(args: &[&str], envs: &[(&str, &str)]) -> String {
     normalize_output(&stdout)
 }
 
+fn run_zk_mutant_with_out_dir(
+    args: &[&str],
+    envs: &[(&str, &str)],
+    out_dir: &Path,
+) -> std::process::Output {
+    let fake_nargo = make_fake_nargo_dir();
+    let new_path = prepend_path(fake_nargo.path());
+
+    let out_dir_str = out_dir.to_string_lossy().to_string();
+
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("zk-mutant"));
+    cmd.args(args)
+        .env("PATH", new_path)
+        .env("NO_COLOR", "1")
+        .env("RUST_BACKTRACE", "0");
+
+    if args.first() == Some(&"run") && !has_flag(args, "--out-dir") {
+        cmd.args(["--out-dir", &out_dir_str]);
+    }
+
+    for (k, v) in envs {
+        cmd.env(k, v);
+    }
+
+    cmd.output().expect("command should run")
+}
+
 #[test]
 fn cli_help_snapshot() {
     let out = run_zk_mutant(&["--help"], &[]);
@@ -298,4 +326,150 @@ fn run_fail_on_survivors_json_snapshot() {
         &[],
     );
     insta::assert_snapshot!("run_fail_on_survivors_json", out);
+}
+
+#[test]
+fn run_writes_out_dir_artifacts() {
+    let out_td = TempDir::new().expect("TempDir for out-dir should create");
+    let out_dir = out_td.path().join("mutants.out");
+
+    let out = run_zk_mutant_with_out_dir(
+        &[
+            "run",
+            "--project",
+            "tests/fixtures/simple_noir",
+            "--limit",
+            "1",
+            "--out-dir",
+            &out_dir.to_string_lossy(),
+        ],
+        &[],
+        &out_dir,
+    );
+
+    assert!(
+        out.status.success(),
+        "expected success, got: {:?}\nstdout:\n{}\nstderr:\n{}",
+        out.status.code(),
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr),
+    );
+
+    let must_exist = [
+        "run.json",
+        "mutants.json",
+        "outcomes.json",
+        "caught.txt",
+        "missed.txt",
+        "unviable.txt",
+        "log",
+    ];
+
+    for rel in must_exist {
+        let p = out_dir.join(rel);
+        assert!(p.exists(), "expected {:?} to exist", p);
+    }
+
+    // diff/ should exist and contain at least one diff when at least one mutant executed.
+    let diff_dir = out_dir.join("diff");
+    assert!(diff_dir.exists(), "expected {:?} to exist", diff_dir);
+    let diff_count = fs::read_dir(&diff_dir)
+        .expect("read diff dir")
+        .filter_map(|e| e.ok())
+        .filter(|e| e.path().is_file())
+        .count();
+    assert!(diff_count > 0, "expected at least one diff file");
+
+    // JSON files should parse.
+    let run_json = fs::read_to_string(out_dir.join("run.json")).expect("read run.json");
+    let _: Value = serde_json::from_str(&run_json).expect("run.json parses");
+
+    let mutants_json = fs::read_to_string(out_dir.join("mutants.json")).expect("read mutants.json");
+    let _: Value = serde_json::from_str(&mutants_json).expect("mutants.json parses");
+
+    let outcomes_json =
+        fs::read_to_string(out_dir.join("outcomes.json")).expect("read outcomes.json");
+    let _: Value = serde_json::from_str(&outcomes_json).expect("outcomes.json parses");
+}
+
+#[test]
+fn run_out_dir_rotates_to_old() {
+    let out_td = TempDir::new().expect("TempDir for out-dir should create");
+    let out_dir = out_td.path().join("mutants.out");
+
+    // 1st run
+    let out1 = run_zk_mutant_with_out_dir(
+        &[
+            "run",
+            "--project",
+            "tests/fixtures/simple_noir",
+            "--limit",
+            "1",
+            "--out-dir",
+            &out_dir.to_string_lossy(),
+        ],
+        &[],
+        &out_dir,
+    );
+    assert!(out1.status.success(), "first run should succeed");
+    assert!(
+        out_dir.join("run.json").exists(),
+        "run.json should exist after first run"
+    );
+
+    // 2nd run (should rotate to mutants.out.old)
+    let out2 = run_zk_mutant_with_out_dir(
+        &[
+            "run",
+            "--project",
+            "tests/fixtures/simple_noir",
+            "--limit",
+            "1",
+            "--out-dir",
+            &out_dir.to_string_lossy(),
+        ],
+        &[],
+        &out_dir,
+    );
+    assert!(out2.status.success(), "second run should succeed");
+
+    let old_dir = out_td.path().join("mutants.out.old");
+    assert!(old_dir.exists(), "expected {:?} to exist", old_dir);
+    assert!(
+        old_dir.join("run.json").exists(),
+        "expected rotated run.json to exist"
+    );
+    assert!(
+        out_dir.join("run.json").exists(),
+        "expected new run.json to exist"
+    );
+}
+
+#[test]
+fn run_fail_on_survivors_limit_0_exit_code_is_0() {
+    let out_td = TempDir::new().expect("TempDir for out-dir should create");
+    let out_dir = out_td.path().join("mutants.out");
+
+    let out = run_zk_mutant_with_out_dir(
+        &[
+            "run",
+            "--project",
+            "tests/fixtures/simple_noir",
+            "--limit",
+            "0",
+            "--fail-on-survivors",
+            "--out-dir",
+            &out_dir.to_string_lossy(),
+        ],
+        &[],
+        &out_dir,
+    );
+
+    assert_eq!(
+        out.status.code(),
+        Some(0),
+        "expected exit code 0\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr),
+    );
 }
