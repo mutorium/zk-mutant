@@ -183,6 +183,15 @@ fn run_limit_0_json_snapshot() {
 }
 
 #[test]
+fn run_no_limit_json_snapshot() {
+    let out = run_zk_mutant(
+        &["run", "--project", "tests/fixtures/simple_noir", "--json"],
+        &[],
+    );
+    insta::assert_snapshot!("run_no_limit_json", out);
+}
+
+#[test]
 fn run_baseline_fail_json_snapshot() {
     let out = run_zk_mutant(
         &[
