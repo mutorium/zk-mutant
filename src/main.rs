@@ -6,6 +6,7 @@ mod options;
 mod patch;
 mod project;
 mod report;
+mod run_report;
 mod runner;
 mod scan;
 mod source;

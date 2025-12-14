@@ -7,6 +7,7 @@ use crate::mutant::{Mutant, MutantOutcome};
 use crate::nargo::{NargoTestResult, run_nargo_test};
 use crate::patch::apply_checked_patch;
 use crate::project::Project;
+use crate::run_report::RunSummary;
 
 /// Copy the entire Noir project into a fresh temporary directory.
 ///
@@ -75,19 +76,6 @@ pub fn run_single_mutant_in_temp(project: &Project, mutant: &Mutant) -> Result<N
 
     // TempDir is dropped here; the directory is cleaned up automatically.
     Ok(result)
-}
-
-/// Summary counts for a mutation-testing run.
-#[derive(Debug, Default)]
-pub struct RunSummary {
-    /// Number of mutants whose tests failed under mutation.
-    pub killed: usize,
-
-    /// Number of mutants for which tests still passed.
-    pub survived: usize,
-
-    /// Number of mutants that could not be built or executed.
-    pub invalid: usize,
 }
 
 /// Naive driver: run all mutants, copying the project for each one.
