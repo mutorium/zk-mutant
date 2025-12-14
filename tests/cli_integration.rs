@@ -88,7 +88,7 @@ fn normalize_output(text: &str) -> String {
 }
 
 fn has_flag(args: &[&str], flag: &str) -> bool {
-    args.iter().any(|a| *a == flag)
+    args.contains(&flag)
 }
 
 /// Combined output helper (stdout + stderr + status) for human-mode snapshots.
