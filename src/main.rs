@@ -3,6 +3,7 @@ mod discover;
 mod mutant;
 mod nargo;
 mod options;
+mod out;
 mod patch;
 mod project;
 mod report;

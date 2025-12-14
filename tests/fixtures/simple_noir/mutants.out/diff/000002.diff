@@ -1,0 +1,5 @@
+--- src/main.nr
++++ src/main.nr
+@@ [94..96] Condition/neq_to_eq
+- "!="
++ "=="

@@ -1,0 +1,5 @@
+--- src/utils.nr
++++ src/utils.nr
+@@ [113..115] Condition/eq_to_neq
+- "=="
++ "!="

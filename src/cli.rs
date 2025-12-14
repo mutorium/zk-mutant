@@ -7,6 +7,7 @@ use clap::{Parser, Subcommand};
 use crate::discover::discover_mutants;
 use crate::nargo::run_nargo_test;
 use crate::options::Options;
+use crate::out;
 use crate::project::Project;
 use crate::report::{print_all_mutants, print_surviving_mutants};
 use crate::run_report::{BaselineReport, MutationRunReport, RunSummary};
@@ -177,6 +178,7 @@ pub fn run() -> Result<()> {
                         format!("failed to load Noir project: {e}"),
                     );
                     let _ = write_run_json(&out_dir, &report);
+                    let _ = out::write_log(&out_dir, &report);
 
                     if json {
                         print_json_and_exit(report, EXIT_ERROR);
@@ -204,6 +206,7 @@ pub fn run() -> Result<()> {
                         format!("failed to run `nargo test`: {e}"),
                     );
                     let _ = write_run_json(&out_dir, &report);
+                    let _ = out::write_log(&out_dir, &report);
 
                     if json {
                         print_json_and_exit(report, EXIT_ERROR);
@@ -231,6 +234,7 @@ pub fn run() -> Result<()> {
                     "baseline `nargo test` failed".to_string(),
                 );
                 let _ = write_run_json(&out_dir, &report);
+                let _ = out::write_log(&out_dir, &report);
 
                 if json {
                     print_json_and_exit(report, EXIT_ERROR);
@@ -251,6 +255,12 @@ pub fn run() -> Result<()> {
             // Discover mutation opportunities.
             let mut mutants = discover_mutants(&project);
             let discovered = mutants.len();
+
+            // Persist full discovery list (pre-limit) like cargo-mutants' mutants.json.
+            if let Err(e) = out::write_mutants_json(&out_dir, &mutants) {
+                ui.warn(format!("failed to write mutants.json: {e}"));
+            }
+
             ui.line(format!("discovered {} mutants", discovered));
 
             if discovered == 0 {
@@ -263,6 +273,7 @@ pub fn run() -> Result<()> {
                     Vec::new(),
                 );
                 let _ = write_run_json(&out_dir, &report);
+                let _ = out::write_log(&out_dir, &report);
 
                 if json {
                     print_json_and_exit(report, EXIT_OK);
@@ -283,6 +294,7 @@ pub fn run() -> Result<()> {
                         Vec::new(),
                     );
                     let _ = write_run_json(&out_dir, &report);
+                    let _ = out::write_log(&out_dir, &report);
 
                     if json {
                         print_json_and_exit(report, EXIT_OK);
@@ -326,6 +338,20 @@ pub fn run() -> Result<()> {
 
             // Always persist report to mutants.out/run.json
             let _ = write_run_json(&out_dir, &report);
+
+            // Cargo-mutants style artifacts (best-effort; do not affect stdout JSON).
+            if let Err(e) = out::write_outcomes_json(&out_dir, &report) {
+                ui.warn(format!("failed to write outcomes.json: {e}"));
+            }
+            if let Err(e) = out::write_outcome_txts(&out_dir, &project, &report.mutants) {
+                ui.warn(format!("failed to write outcome txt files: {e}"));
+            }
+            if let Err(e) = out::write_diff_dir(&out_dir, &report.mutants) {
+                ui.warn(format!("failed to write diff dir: {e}"));
+            }
+            if let Err(e) = out::write_log(&out_dir, &report) {
+                ui.warn(format!("failed to write log: {e}"));
+            }
 
             if json {
                 print_json_and_exit(report, exit_code);

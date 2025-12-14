@@ -1,0 +1,5 @@
+--- src/main.nr
++++ src/main.nr
+@@ [55..56] Condition/lt_to_ge
+- "<"
++ ">="

@@ -1,0 +1,66 @@
+[
+  {
+    "id": 1,
+    "operator": {
+      "category": "Condition",
+      "name": "lt_to_ge"
+    },
+    "span": {
+      "file": "src/main.nr",
+      "start": 55,
+      "end": 56
+    },
+    "original_snippet": "<",
+    "mutated_snippet": ">=",
+    "outcome": "NotRun",
+    "duration_ms": null
+  },
+  {
+    "id": 2,
+    "operator": {
+      "category": "Condition",
+      "name": "neq_to_eq"
+    },
+    "span": {
+      "file": "src/main.nr",
+      "start": 94,
+      "end": 96
+    },
+    "original_snippet": "!=",
+    "mutated_snippet": "==",
+    "outcome": "NotRun",
+    "duration_ms": null
+  },
+  {
+    "id": 3,
+    "operator": {
+      "category": "Condition",
+      "name": "eq_to_neq"
+    },
+    "span": {
+      "file": "src/utils.nr",
+      "start": 113,
+      "end": 115
+    },
+    "original_snippet": "==",
+    "mutated_snippet": "!=",
+    "outcome": "NotRun",
+    "duration_ms": null
+  },
+  {
+    "id": 4,
+    "operator": {
+      "category": "Condition",
+      "name": "eq_to_neq"
+    },
+    "span": {
+      "file": "src/utils.nr",
+      "start": 298,
+      "end": 300
+    },
+    "original_snippet": "==",
+    "mutated_snippet": "!=",
+    "outcome": "NotRun",
+    "duration_ms": null
+  }
+]
