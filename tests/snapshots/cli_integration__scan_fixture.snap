@@ -15,4 +15,14 @@ test functions:          3
 test code lines:         12
 non-test code lines:     12
 test code ratio:         50.00% (test_lines / code_lines)
+--- mutation inventory ---
+discovered mutants: 4
+unique operators: 3
+by operator:
+  Condition/eq_to_neq: 2
+  Condition/lt_to_ge: 1
+  Condition/neq_to_eq: 1
+top files:
+  src/main.nr: 2
+  src/utils.nr: 2
 --- stderr ---
