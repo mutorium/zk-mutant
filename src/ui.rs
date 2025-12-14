@@ -21,11 +21,15 @@ impl Ui {
         let out = if json { Term::stderr() } else { Term::stdout() };
         let err = Term::stderr();
 
-        let is_tty = out.is_term() || err.is_term();
+        // IMPORTANT:
+        // Fancy output must only activate when the *actual output stream we write human output to*
+        // is a real TTY. Otherwise we might emit ANSI styling into a pipe/file.
+        let out_is_tty = out.is_term();
+
         let no_color = env::var_os("NO_COLOR").is_some();
         let in_ci = env::var_os("CI").is_some();
 
-        let fancy = is_tty && !no_color && !in_ci;
+        let fancy = out_is_tty && !no_color && !in_ci;
 
         Self {
             out,
