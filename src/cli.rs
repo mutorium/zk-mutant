@@ -12,6 +12,10 @@ use crate::run_report::{BaselineReport, MutationRunReport, RunSummary};
 use crate::runner::{Progress, run_all_mutants_in_temp};
 use crate::scan::{ProjectOverview, scan_project};
 
+const EXIT_OK: i32 = 0;
+const EXIT_ERROR: i32 = 1;
+const EXIT_SURVIVORS: i32 = 2;
+
 /// Top-level CLI arguments for the `zk-mutant` binary.
 #[derive(Debug, Parser)]
 #[command(
@@ -52,6 +56,10 @@ pub enum Command {
         /// Emit a machine-readable JSON report to stdout.
         #[arg(long)]
         json: bool,
+
+        /// Exit with code 2 if any mutants survive (useful for CI).
+        #[arg(long)]
+        fail_on_survivors: bool,
     },
 }
 
@@ -101,6 +109,7 @@ pub fn run() -> Result<()> {
             verbose,
             limit,
             json,
+            fail_on_survivors,
         } => {
             let options = Options::new(project);
             let project_root = options.project_root.clone();
@@ -122,7 +131,7 @@ pub fn run() -> Result<()> {
                             },
                             format!("failed to load Noir project: {e}"),
                         );
-                        print_json_and_exit(report, 1);
+                        print_json_and_exit(report, EXIT_ERROR);
                     }
 
                     eprintln!("failed to load Noir project at {:?}: {e}", project_root);
@@ -144,7 +153,7 @@ pub fn run() -> Result<()> {
                             },
                             format!("failed to run `nargo test`: {e}"),
                         );
-                        print_json_and_exit(report, 1);
+                        print_json_and_exit(report, EXIT_ERROR);
                     }
 
                     eprintln!("failed to run `nargo test` in {:?}: {e}", project.root());
@@ -169,7 +178,7 @@ pub fn run() -> Result<()> {
                         baseline,
                         "baseline `nargo test` failed".to_string(),
                     );
-                    print_json_and_exit(report, 1);
+                    print_json_and_exit(report, EXIT_ERROR);
                 }
 
                 eprintln!("nargo test failed");
@@ -199,10 +208,10 @@ pub fn run() -> Result<()> {
                         RunSummary::default(),
                         Vec::new(),
                     );
-                    print_json_and_exit(report, 0);
+                    print_json_and_exit(report, EXIT_OK);
                 }
 
-                println!("no mutants discovered, exiting");
+                human_ln(json, "no mutants discovered, exiting");
                 return Ok(());
             }
 
@@ -217,10 +226,10 @@ pub fn run() -> Result<()> {
                             RunSummary::default(),
                             Vec::new(),
                         );
-                        print_json_and_exit(report, 0);
+                        print_json_and_exit(report, EXIT_OK);
                     }
 
-                    println!("mutant limit is 0, exiting");
+                    human_ln(json, "mutant limit is 0, exiting");
                     return Ok(());
                 }
 
@@ -245,6 +254,14 @@ pub fn run() -> Result<()> {
             let executed = mutants.len();
             let summary = run_all_mutants_in_temp(&project, &mut mutants, progress)?;
 
+            // CI policy
+            let wants_ci_fail = fail_on_survivors && summary.survived > 0;
+            let exit_code = if wants_ci_fail {
+                EXIT_SURVIVORS
+            } else {
+                EXIT_OK
+            };
+
             if json {
                 let report = MutationRunReport::success(
                     project_root,
@@ -254,7 +271,7 @@ pub fn run() -> Result<()> {
                     summary,
                     mutants,
                 );
-                print_json_and_exit(report, 0);
+                print_json_and_exit(report, exit_code);
             }
 
             println!("--- mutation run summary ---");
@@ -267,8 +284,15 @@ pub fn run() -> Result<()> {
                 print_all_mutants(&project, &mutants);
             }
 
-            // Extra observability: list surviving mutants with their textual change.
             print_surviving_mutants(&project, &mutants);
+
+            if wants_ci_fail {
+                eprintln!(
+                    "mutation testing failed policy: {} mutant(s) survived (--fail-on-survivors)",
+                    summary.survived
+                );
+                std::process::exit(EXIT_SURVIVORS);
+            }
 
             Ok(())
         }

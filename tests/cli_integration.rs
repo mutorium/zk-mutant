@@ -80,6 +80,10 @@ fn normalize_output(text: &str) -> String {
     let re_tmp_unix = Regex::new(r"/tmp/[^\s]+").unwrap();
     let out = re_tmp_unix.replace_all(&out, "<TMP>");
 
+    // Optional extra defense for Windows temp paths.
+    let re_tmp_win = Regex::new(r"[A-Za-z]:\\[^\s]+\\Temp\\[^\s]+").unwrap();
+    let out = re_tmp_win.replace_all(&out, "<TMP>");
+
     out.to_string()
 }
 
@@ -228,4 +232,43 @@ fn run_no_limit_json_snapshot() {
         &[],
     );
     insta::assert_snapshot!("run_no_limit_json", out);
+}
+
+#[test]
+fn run_fail_on_survivors_exit_code_is_2() {
+    let fake_nargo = make_fake_nargo_dir();
+    let new_path = prepend_path(fake_nargo.path());
+
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("zk-mutant"));
+    cmd.args([
+        "run",
+        "--project",
+        "tests/fixtures/simple_noir",
+        "--limit",
+        "1",
+        "--fail-on-survivors",
+    ])
+    .env("PATH", new_path)
+    .env("NO_COLOR", "1")
+    .env("RUST_BACKTRACE", "0");
+
+    let out = cmd.output().expect("command should run");
+    assert_eq!(out.status.code(), Some(2));
+}
+
+#[test]
+fn run_fail_on_survivors_json_snapshot() {
+    let out = run_zk_mutant_stdout(
+        &[
+            "run",
+            "--project",
+            "tests/fixtures/simple_noir",
+            "--limit",
+            "1",
+            "--json",
+            "--fail-on-survivors",
+        ],
+        &[],
+    );
+    insta::assert_snapshot!("run_fail_on_survivors_json", out);
 }
