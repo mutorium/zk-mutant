@@ -1,3 +1,0 @@
-#1 src/main.nr:4:14-4:15 Condition/lt_to_ge: "<" -> ">="
-#2 src/main.nr:6:14-6:16 Condition/neq_to_eq: "!=" -> "=="
-#3 src/utils.nr:4:18-4:20 Condition/eq_to_neq: "==" -> "!="
