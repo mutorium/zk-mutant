@@ -9,6 +9,7 @@ project: "tests/fixtures/simple_noir"
 nargo test finished in <DUR> (exit code: Some(0), success: true)
 discovered 4 mutants
 running 1 mutants (of 4)
+mutant 1 survived (tests still pass)
 --- mutation run summary ---
 mutants total:    1
 mutants killed:   0
@@ -19,4 +20,3 @@ survived      <DUR> #1 src/main.nr:4:14-4:15 Condition/lt_to_ge: "<" -> ">="
 --- surviving mutants (1 of 1) ---
 #1 src/main.nr:4:14-4:15 Condition/lt_to_ge: "<" -> ">="
 --- stderr ---
-mutant 1 survived (tests still pass)

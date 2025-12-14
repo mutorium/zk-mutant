@@ -2,8 +2,6 @@
 source: tests/cli_integration.rs
 expression: out
 ---
-status: exit status: 0
---- stdout ---
 {
   "tool": "zk-mutant",
   "version": "0.1.0",
@@ -22,4 +20,3 @@ status: exit status: 0
   },
   "mutants": []
 }
---- stderr ---

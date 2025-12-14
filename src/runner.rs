@@ -9,6 +9,24 @@ use crate::patch::apply_checked_patch;
 use crate::project::Project;
 use crate::run_report::RunSummary;
 
+/// Where to emit human-oriented progress output during a run.
+#[derive(Debug, Clone, Copy)]
+pub enum Progress {
+    Stdout,
+    Stderr,
+
+    #[allow(dead_code)]
+    Silent,
+}
+
+fn progress_ln(progress: Progress, msg: impl std::fmt::Display) {
+    match progress {
+        Progress::Stdout => println!("{msg}"),
+        Progress::Stderr => eprintln!("{msg}"),
+        Progress::Silent => {}
+    }
+}
+
 /// Copy the entire Noir project into a fresh temporary directory.
 ///
 /// The returned [`TempDir`] keeps the directory alive for the duration of its
@@ -82,8 +100,12 @@ pub fn run_single_mutant_in_temp(project: &Project, mutant: &Mutant) -> Result<N
 ///
 /// For every mutant, this runs [`run_single_mutant_in_temp`], classifies the
 /// outcome, and updates the `Mutant`'s `outcome` and `duration_ms` fields.
-pub fn run_all_mutants_in_temp(project: &Project, mutants: &mut [Mutant]) -> Result<RunSummary> {
-    run_all_mutants_with(project, mutants, run_single_mutant_in_temp)
+pub fn run_all_mutants_in_temp(
+    project: &Project,
+    mutants: &mut [Mutant],
+    progress: Progress,
+) -> Result<RunSummary> {
+    run_all_mutants_with(project, mutants, run_single_mutant_in_temp, progress)
 }
 
 /// Run all mutants using the provided per-mutant runner.
@@ -94,6 +116,7 @@ fn run_all_mutants_with(
     project: &Project,
     mutants: &mut [Mutant],
     run_one: fn(&Project, &Mutant) -> Result<NargoTestResult>,
+    progress: Progress,
 ) -> Result<RunSummary> {
     let mut summary = RunSummary::default();
 
@@ -114,11 +137,17 @@ fn run_all_mutants_with(
         m.duration_ms = Some(result.duration.as_millis() as u64);
 
         if result.success {
-            eprintln!("mutant {} survived (tests still pass)", m.id);
+            progress_ln(
+                progress,
+                format!("mutant {} survived (tests still pass)", m.id),
+            );
             m.outcome = MutantOutcome::Survived;
             summary.survived += 1;
         } else {
-            eprintln!("mutant {} killed (tests failed under mutation)", m.id);
+            progress_ln(
+                progress,
+                format!("mutant {} killed (tests failed under mutation)", m.id),
+            );
             m.outcome = MutantOutcome::Killed;
             summary.killed += 1;
         }
@@ -347,8 +376,8 @@ mod tests {
             }
         }
 
-        let summary =
-            run_all_mutants_with(&project, &mut mutants, fake_run_one).expect("should succeed");
+        let summary = run_all_mutants_with(&project, &mut mutants, fake_run_one, Progress::Silent)
+            .expect("should succeed");
 
         insta::assert_debug_snapshot!("run_all_mutants_summary", summary);
         insta::assert_debug_snapshot!("run_all_mutants_mutants", mutants);

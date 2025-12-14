@@ -9,7 +9,7 @@ use crate::options::Options;
 use crate::project::Project;
 use crate::report::{print_all_mutants, print_surviving_mutants};
 use crate::run_report::{BaselineReport, MutationRunReport, RunSummary};
-use crate::runner::run_all_mutants_in_temp;
+use crate::runner::{Progress, run_all_mutants_in_temp};
 use crate::scan::{ProjectOverview, scan_project};
 
 /// Top-level CLI arguments for the `zk-mutant` binary.
@@ -61,6 +61,17 @@ fn print_json_and_exit(report: MutationRunReport, exit_code: i32) -> ! {
     std::process::exit(exit_code);
 }
 
+/// Print human-oriented output.
+/// - normal mode: stdout
+/// - `--json` mode: stderr (so stdout stays machine-readable)
+fn human_ln(json: bool, msg: impl std::fmt::Display) {
+    if json {
+        eprintln!("{msg}");
+    } else {
+        println!("{msg}");
+    }
+}
+
 /// Parse CLI arguments and dispatch the selected command.
 pub fn run() -> Result<()> {
     let cli = Cli::parse();
@@ -94,10 +105,8 @@ pub fn run() -> Result<()> {
             let options = Options::new(project);
             let project_root = options.project_root.clone();
 
-            if !json {
-                println!("zk-mutant: run");
-                println!("project: {:?}", project_root);
-            }
+            human_ln(json, "zk-mutant: run");
+            human_ln(json, format!("project: {:?}", project_root));
 
             // Load Noir project and metrics via noir-metrics.
             let project = match Project::from_root(project_root.clone()) {
@@ -145,12 +154,13 @@ pub fn run() -> Result<()> {
 
             let baseline = BaselineReport::from_nargo(&baseline_result);
 
-            if !json {
-                println!(
+            human_ln(
+                json,
+                format!(
                     "nargo test finished in {:?} (exit code: {:?}, success: {})",
                     baseline_result.duration, baseline_result.exit_code, baseline_result.success
-                );
-            }
+                ),
+            );
 
             if !baseline_result.success {
                 if json {
@@ -177,10 +187,7 @@ pub fn run() -> Result<()> {
             // Discover mutation opportunities.
             let mut mutants = discover_mutants(&project);
             let discovered = mutants.len();
-
-            if !json {
-                println!("discovered {} mutants", discovered);
-            }
+            human_ln(json, format!("discovered {} mutants", discovered));
 
             if discovered == 0 {
                 if json {
@@ -221,14 +228,22 @@ pub fn run() -> Result<()> {
                     mutants.truncate(limit);
                 }
 
-                if !json {
-                    println!("running {} mutants (of {})", mutants.len(), discovered);
-                }
+                human_ln(
+                    json,
+                    format!("running {} mutants (of {})", mutants.len(), discovered),
+                );
             }
+
+            // Ensure stdout is clean JSON in `--json` mode: progress goes to stderr.
+            let progress = if json {
+                Progress::Stderr
+            } else {
+                Progress::Stdout
+            };
 
             // Run all mutants sequentially (naive implementation).
             let executed = mutants.len();
-            let summary = run_all_mutants_in_temp(&project, &mut mutants)?;
+            let summary = run_all_mutants_in_temp(&project, &mut mutants, progress)?;
 
             if json {
                 let report = MutationRunReport::success(
