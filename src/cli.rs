@@ -1,6 +1,7 @@
-use std::path::PathBuf;
+use std::fs;
+use std::path::{Path, PathBuf};
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 
 use crate::discover::discover_mutants;
@@ -61,6 +62,10 @@ pub enum Command {
         /// Exit with code 2 if any mutants survive (useful for CI).
         #[arg(long)]
         fail_on_survivors: bool,
+
+        /// Where to write run artifacts (defaults to <project_root>/mutants.out).
+        #[arg(long)]
+        out_dir: Option<PathBuf>,
     },
 }
 
@@ -68,6 +73,37 @@ fn print_json_and_exit(report: MutationRunReport, exit_code: i32) -> ! {
     let json = serde_json::to_string_pretty(&report).expect("serialize report to json");
     println!("{json}");
     std::process::exit(exit_code);
+}
+
+fn old_dir_for(out_dir: &Path) -> PathBuf {
+    let parent = out_dir.parent().unwrap_or_else(|| Path::new("."));
+    let name = out_dir
+        .file_name()
+        .map(|s| s.to_string_lossy().to_string())
+        .unwrap_or_else(|| "mutants.out".to_string());
+    parent.join(format!("{name}.old"))
+}
+
+fn prepare_out_dir(out_dir: &Path) -> Result<()> {
+    let old = old_dir_for(out_dir);
+
+    if out_dir.exists() {
+        if old.exists() {
+            fs::remove_dir_all(&old).with_context(|| format!("failed to remove {:?}", old))?;
+        }
+        fs::rename(out_dir, &old)
+            .with_context(|| format!("failed to rotate output dir {:?} -> {:?}", out_dir, old))?;
+    }
+
+    fs::create_dir_all(out_dir).with_context(|| format!("failed to create {:?}", out_dir))?;
+    Ok(())
+}
+
+fn write_run_json(out_dir: &Path, report: &MutationRunReport) -> Result<()> {
+    let path = out_dir.join("run.json");
+    let json = serde_json::to_string_pretty(report).context("serialize report to json")?;
+    fs::write(&path, json).with_context(|| format!("failed to write {:?}", path))?;
+    Ok(())
 }
 
 /// Parse CLI arguments and dispatch the selected command.
@@ -99,10 +135,30 @@ pub fn run() -> Result<()> {
             limit,
             json,
             fail_on_survivors,
+            out_dir,
         } => {
             let ui = Ui::new(json);
             let options = Options::new(project);
             let project_root = options.project_root.clone();
+
+            // Output directory (rotate + create)
+            let out_dir = out_dir.unwrap_or_else(|| project_root.join("mutants.out"));
+            if let Err(e) = prepare_out_dir(&out_dir) {
+                if json {
+                    let report = MutationRunReport::failure(
+                        project_root.clone(),
+                        BaselineReport {
+                            success: false,
+                            exit_code: None,
+                            duration_ms: 0,
+                        },
+                        format!("failed to prepare out dir {:?}: {e}", out_dir),
+                    );
+                    print_json_and_exit(report, EXIT_ERROR);
+                }
+                ui.error(format!("failed to prepare out dir {:?}: {e}", out_dir));
+                return Err(e);
+            }
 
             ui.title("zk-mutant: run");
             ui.line(format!("project: {:?}", project_root));
@@ -111,16 +167,18 @@ pub fn run() -> Result<()> {
             let project = match Project::from_root(project_root.clone()) {
                 Ok(p) => p,
                 Err(e) => {
+                    let report = MutationRunReport::failure(
+                        project_root.clone(),
+                        BaselineReport {
+                            success: false,
+                            exit_code: None,
+                            duration_ms: 0,
+                        },
+                        format!("failed to load Noir project: {e}"),
+                    );
+                    let _ = write_run_json(&out_dir, &report);
+
                     if json {
-                        let report = MutationRunReport::failure(
-                            project_root,
-                            BaselineReport {
-                                success: false,
-                                exit_code: None,
-                                duration_ms: 0,
-                            },
-                            format!("failed to load Noir project: {e}"),
-                        );
                         print_json_and_exit(report, EXIT_ERROR);
                     }
 
@@ -136,16 +194,18 @@ pub fn run() -> Result<()> {
             let baseline_result = match run_nargo_test(project.root()) {
                 Ok(r) => r,
                 Err(e) => {
+                    let report = MutationRunReport::failure(
+                        project_root.clone(),
+                        BaselineReport {
+                            success: false,
+                            exit_code: None,
+                            duration_ms: 0,
+                        },
+                        format!("failed to run `nargo test`: {e}"),
+                    );
+                    let _ = write_run_json(&out_dir, &report);
+
                     if json {
-                        let report = MutationRunReport::failure(
-                            project_root,
-                            BaselineReport {
-                                success: false,
-                                exit_code: None,
-                                duration_ms: 0,
-                            },
-                            format!("failed to run `nargo test`: {e}"),
-                        );
                         print_json_and_exit(report, EXIT_ERROR);
                     }
 
@@ -165,12 +225,14 @@ pub fn run() -> Result<()> {
             ));
 
             if !baseline_result.success {
+                let report = MutationRunReport::failure(
+                    project_root.clone(),
+                    baseline,
+                    "baseline `nargo test` failed".to_string(),
+                );
+                let _ = write_run_json(&out_dir, &report);
+
                 if json {
-                    let report = MutationRunReport::failure(
-                        project_root,
-                        baseline,
-                        "baseline `nargo test` failed".to_string(),
-                    );
                     print_json_and_exit(report, EXIT_ERROR);
                 }
 
@@ -192,15 +254,17 @@ pub fn run() -> Result<()> {
             ui.line(format!("discovered {} mutants", discovered));
 
             if discovered == 0 {
+                let report = MutationRunReport::success(
+                    project_root.clone(),
+                    0,
+                    0,
+                    baseline,
+                    RunSummary::default(),
+                    Vec::new(),
+                );
+                let _ = write_run_json(&out_dir, &report);
+
                 if json {
-                    let report = MutationRunReport::success(
-                        project_root,
-                        0,
-                        0,
-                        baseline,
-                        RunSummary::default(),
-                        Vec::new(),
-                    );
                     print_json_and_exit(report, EXIT_OK);
                 }
 
@@ -210,15 +274,17 @@ pub fn run() -> Result<()> {
 
             if let Some(limit) = limit {
                 if limit == 0 {
+                    let report = MutationRunReport::success(
+                        project_root.clone(),
+                        discovered,
+                        0,
+                        baseline,
+                        RunSummary::default(),
+                        Vec::new(),
+                    );
+                    let _ = write_run_json(&out_dir, &report);
+
                     if json {
-                        let report = MutationRunReport::success(
-                            project_root,
-                            discovered,
-                            0,
-                            baseline,
-                            RunSummary::default(),
-                            Vec::new(),
-                        );
                         print_json_and_exit(report, EXIT_OK);
                     }
 
@@ -249,34 +315,38 @@ pub fn run() -> Result<()> {
                 EXIT_OK
             };
 
+            let report = MutationRunReport::success(
+                project_root.clone(),
+                discovered,
+                executed,
+                baseline,
+                summary,
+                mutants,
+            );
+
+            // Always persist report to mutants.out/run.json
+            let _ = write_run_json(&out_dir, &report);
+
             if json {
-                let report = MutationRunReport::success(
-                    project_root,
-                    discovered,
-                    executed,
-                    baseline,
-                    summary,
-                    mutants,
-                );
                 print_json_and_exit(report, exit_code);
             }
 
             ui.line("--- mutation run summary ---");
             ui.line(format!("mutants total:    {}", executed));
-            ui.line(format!("mutants killed:   {}", summary.killed));
-            ui.line(format!("mutants survived: {}", summary.survived));
-            ui.line(format!("mutants invalid:  {}", summary.invalid));
+            ui.line(format!("mutants killed:   {}", report.summary.killed));
+            ui.line(format!("mutants survived: {}", report.summary.survived));
+            ui.line(format!("mutants invalid:  {}", report.summary.invalid));
 
             if verbose {
-                print_all_mutants(&project, &mutants);
+                print_all_mutants(&project, &report.mutants);
             }
 
-            print_surviving_mutants(&project, &mutants);
+            print_surviving_mutants(&project, &report.mutants);
 
             if wants_ci_fail {
                 ui.error(format!(
                     "mutation testing failed policy: {} mutant(s) survived (--fail-on-survivors)",
-                    summary.survived
+                    report.summary.survived
                 ));
                 std::process::exit(EXIT_SURVIVORS);
             }

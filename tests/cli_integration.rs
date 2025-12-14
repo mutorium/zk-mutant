@@ -87,16 +87,29 @@ fn normalize_output(text: &str) -> String {
     out.to_string()
 }
 
+fn has_flag(args: &[&str], flag: &str) -> bool {
+    args.iter().any(|a| *a == flag)
+}
+
 /// Combined output helper (stdout + stderr + status) for human-mode snapshots.
 fn run_zk_mutant(args: &[&str], envs: &[(&str, &str)]) -> String {
     let fake_nargo = make_fake_nargo_dir();
     let new_path = prepend_path(fake_nargo.path());
+
+    // Ensure we never create/rotate mutants.out inside fixtures or repo during tests.
+    let out_td = TempDir::new().expect("TempDir for out-dir should create");
+    let out_dir = out_td.path().join("mutants.out");
+    let out_dir_str = out_dir.to_string_lossy().to_string();
 
     let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("zk-mutant"));
     cmd.args(args)
         .env("PATH", new_path)
         .env("NO_COLOR", "1")
         .env("RUST_BACKTRACE", "0");
+
+    if args.first() == Some(&"run") && !has_flag(args, "--out-dir") {
+        cmd.args(["--out-dir", &out_dir_str]);
+    }
 
     for (k, v) in envs {
         cmd.env(k, v);
@@ -119,11 +132,19 @@ fn run_zk_mutant_stdout(args: &[&str], envs: &[(&str, &str)]) -> String {
     let fake_nargo = make_fake_nargo_dir();
     let new_path = prepend_path(fake_nargo.path());
 
+    let out_td = TempDir::new().expect("TempDir for out-dir should create");
+    let out_dir = out_td.path().join("mutants.out");
+    let out_dir_str = out_dir.to_string_lossy().to_string();
+
     let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("zk-mutant"));
     cmd.args(args)
         .env("PATH", new_path)
         .env("NO_COLOR", "1")
         .env("RUST_BACKTRACE", "0");
+
+    if args.first() == Some(&"run") && !has_flag(args, "--out-dir") {
+        cmd.args(["--out-dir", &out_dir_str]);
+    }
 
     for (k, v) in envs {
         cmd.env(k, v);
@@ -239,6 +260,10 @@ fn run_fail_on_survivors_exit_code_is_2() {
     let fake_nargo = make_fake_nargo_dir();
     let new_path = prepend_path(fake_nargo.path());
 
+    let out_td = TempDir::new().expect("TempDir for out-dir should create");
+    let out_dir = out_td.path().join("mutants.out");
+    let out_dir_str = out_dir.to_string_lossy().to_string();
+
     let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("zk-mutant"));
     cmd.args([
         "run",
@@ -247,6 +272,8 @@ fn run_fail_on_survivors_exit_code_is_2() {
         "--limit",
         "1",
         "--fail-on-survivors",
+        "--out-dir",
+        &out_dir_str,
     ])
     .env("PATH", new_path)
     .env("NO_COLOR", "1")
