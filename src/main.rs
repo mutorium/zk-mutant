@@ -11,6 +11,7 @@ mod runner;
 mod scan;
 mod source;
 mod span;
+mod ui;
 
 /// Entry point for the `zk-mutant` binary.
 fn main() -> anyhow::Result<()> {

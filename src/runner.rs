@@ -8,24 +8,7 @@ use crate::nargo::{NargoTestResult, run_nargo_test};
 use crate::patch::apply_checked_patch;
 use crate::project::Project;
 use crate::run_report::RunSummary;
-
-/// Where to emit human-oriented progress output during a run.
-#[derive(Debug, Clone, Copy)]
-pub enum Progress {
-    Stdout,
-    Stderr,
-
-    #[allow(dead_code)]
-    Silent,
-}
-
-fn progress_ln(progress: Progress, msg: impl std::fmt::Display) {
-    match progress {
-        Progress::Stdout => println!("{msg}"),
-        Progress::Stderr => eprintln!("{msg}"),
-        Progress::Silent => {}
-    }
-}
+use crate::ui::Ui;
 
 /// Copy the entire Noir project into a fresh temporary directory.
 ///
@@ -77,46 +60,31 @@ pub fn apply_mutant_in_temp_tree(temp_root: &Path, mutant: &Mutant) -> Result<()
 }
 
 /// Run `nargo test` on a temporary copy of the project with a single mutant applied.
-///
-/// The original project on disk is not modified. A fresh temp directory is
-/// created, the whole project is copied there, the given mutant is written into
-/// the corresponding file, and then `nargo test` is executed in that temp tree.
 pub fn run_single_mutant_in_temp(project: &Project, mutant: &Mutant) -> Result<NargoTestResult> {
-    // 1. Copy the whole project into a temp directory.
     let temp = copy_project_to_temp(project)?;
     let temp_root = temp.path();
 
-    // 2. Apply the mutant in the temp tree.
     apply_mutant_in_temp_tree(temp_root, mutant)?;
-
-    // 3. Run `nargo test` in the temp project directory.
     let result = run_nargo_test(temp_root)?;
 
-    // TempDir is dropped here; the directory is cleaned up automatically.
     Ok(result)
 }
 
 /// Naive driver: run all mutants, copying the project for each one.
-///
-/// For every mutant, this runs [`run_single_mutant_in_temp`], classifies the
-/// outcome, and updates the `Mutant`'s `outcome` and `duration_ms` fields.
 pub fn run_all_mutants_in_temp(
     project: &Project,
     mutants: &mut [Mutant],
-    progress: Progress,
+    ui: &Ui,
 ) -> Result<RunSummary> {
-    run_all_mutants_with(project, mutants, run_single_mutant_in_temp, progress)
+    run_all_mutants_with(project, mutants, run_single_mutant_in_temp, ui)
 }
 
 /// Run all mutants using the provided per-mutant runner.
-///
-/// This updates each `Mutant`'s `outcome` and `duration_ms` in-place and returns
-/// a [`RunSummary`] with the counts.
 fn run_all_mutants_with(
     project: &Project,
     mutants: &mut [Mutant],
     run_one: fn(&Project, &Mutant) -> Result<NargoTestResult>,
-    progress: Progress,
+    ui: &Ui,
 ) -> Result<RunSummary> {
     let mut summary = RunSummary::default();
 
@@ -124,10 +92,10 @@ fn run_all_mutants_with(
         let result = match run_one(project, m) {
             Ok(r) => r,
             Err(e) => {
-                eprintln!(
+                ui.runner_error(format!(
                     "failed to run mutant {} in temp project for {:?}: {e}",
                     m.id, m.span.file
-                );
+                ));
                 m.outcome = MutantOutcome::Invalid;
                 summary.invalid += 1;
                 continue;
@@ -137,20 +105,14 @@ fn run_all_mutants_with(
         m.duration_ms = Some(result.duration.as_millis() as u64);
 
         if result.success {
-            progress_ln(
-                progress,
-                format!("mutant {} survived (tests still pass)", m.id),
-            );
             m.outcome = MutantOutcome::Survived;
             summary.survived += 1;
         } else {
-            progress_ln(
-                progress,
-                format!("mutant {} killed (tests failed under mutation)", m.id),
-            );
             m.outcome = MutantOutcome::Killed;
             summary.killed += 1;
         }
+
+        ui.mutant_progress(m);
     }
 
     Ok(summary)
@@ -206,31 +168,18 @@ mod tests {
         let project = Project::from_root(root).expect("Project::from_root should succeed");
 
         let mutants = discover_mutants(&project);
-        assert!(
-            !mutants.is_empty(),
-            "expected discover_mutants to find at least one mutant"
-        );
+        assert!(!mutants.is_empty());
 
         let m = &mutants[0];
-
         let mutated =
             apply_mutant_in_memory(&project, m).expect("apply_mutant_in_memory should succeed");
 
         let start = m.span.start as usize;
         let end = start + m.mutated_snippet.len();
 
-        assert!(
-            end <= mutated.len(),
-            "mutated source shorter than expected span"
-        );
-
         let slice = &mutated.as_bytes()[start..end];
-        let slice_str = std::str::from_utf8(slice).expect("mutated slice should be valid UTF-8");
-
-        assert_eq!(
-            slice_str, m.mutated_snippet,
-            "replacement not present at expected span"
-        );
+        let slice_str = std::str::from_utf8(slice).expect("utf8");
+        assert_eq!(slice_str, m.mutated_snippet);
     }
 
     #[test]
@@ -247,14 +196,12 @@ mod tests {
 
             assert!(copy.exists(), "expected copied file to exist: {:?}", copy);
 
-            let orig_contents = std::fs::read_to_string(&orig)
-                .expect("failed to read original file for comparison");
-            let copy_contents =
-                std::fs::read_to_string(&copy).expect("failed to read copied file for comparison");
+            let orig_contents = std::fs::read_to_string(&orig).unwrap();
+            let copy_contents = std::fs::read_to_string(&copy).unwrap();
 
             assert_eq!(
                 orig_contents, copy_contents,
-                "copied file contents differ for {:?}",
+                "copied file differs: {:?}",
                 fm.path
             );
         }
@@ -266,10 +213,7 @@ mod tests {
         let project = Project::from_root(root).expect("Project::from_root should succeed");
 
         let mutants = discover_mutants(&project);
-        assert!(
-            !mutants.is_empty(),
-            "expected discover_mutants to find at least one mutant"
-        );
+        assert!(!mutants.is_empty());
 
         let m = &mutants[0];
 
@@ -279,24 +223,14 @@ mod tests {
         apply_mutant_in_temp_tree(temp_root, m).expect("apply_mutant_in_temp_tree should succeed");
 
         let temp_file_path = temp_root.join(&m.span.file);
-        let mutated_contents =
-            std::fs::read_to_string(&temp_file_path).expect("failed to read mutated temp file");
+        let mutated_contents = std::fs::read_to_string(&temp_file_path).unwrap();
 
         let start = m.span.start as usize;
         let end = start + m.mutated_snippet.len();
 
-        assert!(
-            end <= mutated_contents.len(),
-            "mutated source shorter than expected span"
-        );
-
         let slice = &mutated_contents.as_bytes()[start..end];
-        let slice_str = std::str::from_utf8(slice).expect("mutated slice should be valid UTF-8");
-
-        assert_eq!(
-            slice_str, m.mutated_snippet,
-            "mutated snippet not present at expected span in temp file"
-        );
+        let slice_str = std::str::from_utf8(slice).expect("utf8");
+        assert_eq!(slice_str, m.mutated_snippet);
     }
 
     #[test]
@@ -372,12 +306,12 @@ mod tests {
                     duration: Duration::from_millis(20),
                 }),
                 3 => Err(anyhow::anyhow!("simulated failure")),
-                _ => unreachable!("unexpected mutant id"),
+                _ => unreachable!(),
             }
         }
 
-        let summary = run_all_mutants_with(&project, &mut mutants, fake_run_one, Progress::Silent)
-            .expect("should succeed");
+        let ui = Ui::silent();
+        let summary = run_all_mutants_with(&project, &mut mutants, fake_run_one, &ui).unwrap();
 
         insta::assert_debug_snapshot!("run_all_mutants_summary", summary);
         insta::assert_debug_snapshot!("run_all_mutants_mutants", mutants);
