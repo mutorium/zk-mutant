@@ -623,5 +623,6 @@ dependencies = [
  "noir-metrics",
  "regex",
  "serde",
+ "serde_json",
  "tempfile",
 ]

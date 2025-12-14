@@ -62,7 +62,6 @@ exit /b 0
 fn prepend_path(dir: &Path) -> OsString {
     let old = std::env::var_os("PATH").unwrap_or_default();
 
-    // join_paths wants a single item type; split_paths yields PathBuf, so we use PathBuf everywhere.
     std::env::join_paths(std::iter::once(dir.to_path_buf()).chain(std::env::split_paths(&old)))
         .expect("join PATH")
 }
@@ -71,6 +70,10 @@ fn normalize_output(text: &str) -> String {
     // Redact durations like `261.502302ms`, `8s`, `234ms`.
     let re_dur = Regex::new(r"\b\d+(\.\d+)?(ns|us|µs|ms|s)\b").unwrap();
     let out = re_dur.replace_all(text, "<DUR>");
+
+    // Redact JSON duration_ms fields (these vary run-to-run).
+    let re_json_dur_ms = Regex::new(r#""duration_ms"\s*:\s*\d+"#).unwrap();
+    let out = re_json_dur_ms.replace_all(&out, r#""duration_ms": 0"#);
 
     // Defensive: redact tmp-ish paths if they ever appear.
     let re_tmp_unix = Regex::new(r"/tmp/[^\s]+").unwrap();
@@ -83,7 +86,6 @@ fn run_zk_mutant(args: &[&str], envs: &[(&str, &str)]) -> String {
     let fake_nargo = make_fake_nargo_dir();
     let new_path = prepend_path(fake_nargo.path());
 
-    // Prefer the macro over deprecated helpers.
     let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("zk-mutant"));
     cmd.args(args)
         .env("PATH", new_path)
@@ -162,4 +164,36 @@ fn run_baseline_fail_snapshot() {
         &[("ZK_MUTANT_FAKE_NARGO_FAIL", "1")],
     );
     insta::assert_snapshot!("run_baseline_fail", out);
+}
+
+#[test]
+fn run_limit_0_json_snapshot() {
+    let out = run_zk_mutant(
+        &[
+            "run",
+            "--project",
+            "tests/fixtures/simple_noir",
+            "--limit",
+            "0",
+            "--json",
+        ],
+        &[],
+    );
+    insta::assert_snapshot!("run_limit_0_json", out);
+}
+
+#[test]
+fn run_baseline_fail_json_snapshot() {
+    let out = run_zk_mutant(
+        &[
+            "run",
+            "--project",
+            "tests/fixtures/simple_noir",
+            "--limit",
+            "1",
+            "--json",
+        ],
+        &[("ZK_MUTANT_FAKE_NARGO_FAIL", "1")],
+    );
+    insta::assert_snapshot!("run_baseline_fail_json", out);
 }

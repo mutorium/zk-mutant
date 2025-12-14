@@ -114,11 +114,11 @@ fn run_all_mutants_with(
         m.duration_ms = Some(result.duration.as_millis() as u64);
 
         if result.success {
-            println!("mutant {} survived (tests still pass)", m.id);
+            eprintln!("mutant {} survived (tests still pass)", m.id);
             m.outcome = MutantOutcome::Survived;
             summary.survived += 1;
         } else {
-            println!("mutant {} killed (tests failed under mutation)", m.id);
+            eprintln!("mutant {} killed (tests failed under mutation)", m.id);
             m.outcome = MutantOutcome::Killed;
             summary.killed += 1;
         }

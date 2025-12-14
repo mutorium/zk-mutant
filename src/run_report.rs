@@ -1,11 +1,12 @@
-use serde::Serialize;
 use std::path::PathBuf;
+
+use serde::Serialize;
 
 use crate::mutant::Mutant;
 use crate::nargo::NargoTestResult;
 
 /// Summary counts for a mutation-testing run.
-#[derive(Debug, Default, Clone, Copy, Serialize, PartialEq, Eq)]
+#[derive(Debug, Default, Clone, Serialize)]
 pub struct RunSummary {
     /// Number of mutants whose tests failed under mutation.
     pub killed: usize,
@@ -18,7 +19,7 @@ pub struct RunSummary {
 }
 
 /// Baseline `nargo test` metadata.
-#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize)]
 pub struct BaselineReport {
     pub success: bool,
     pub exit_code: Option<i32>,
@@ -37,9 +38,7 @@ impl BaselineReport {
 
 /// Machine-readable report for a mutation test run.
 ///
-/// This is the canonical *domain model* for “what happened” in a run.
-/// Different renderers (text, JSON, JUnit, SARIF, etc.) should consume this
-/// rather than duplicating the same data in multiple formats.
+/// In `--json` mode we print this to stdout as pretty JSON.
 #[derive(Debug, Serialize)]
 pub struct MutationRunReport {
     /// Tool name, stable across versions.

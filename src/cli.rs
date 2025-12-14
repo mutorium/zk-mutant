@@ -8,6 +8,7 @@ use crate::nargo::run_nargo_test;
 use crate::options::Options;
 use crate::project::Project;
 use crate::report::{print_all_mutants, print_surviving_mutants};
+use crate::run_report::{BaselineReport, MutationRunReport, RunSummary};
 use crate::runner::run_all_mutants_in_temp;
 use crate::scan::{ProjectOverview, scan_project};
 
@@ -47,7 +48,17 @@ pub enum Command {
         /// Run only the first N discovered mutants (deterministic order).
         #[arg(long)]
         limit: Option<usize>,
+
+        /// Emit a machine-readable JSON report to stdout.
+        #[arg(long)]
+        json: bool,
     },
+}
+
+fn print_json_and_exit(report: MutationRunReport, exit_code: i32) -> ! {
+    let json = serde_json::to_string_pretty(&report).expect("serialize report to json");
+    println!("{json}");
+    std::process::exit(exit_code);
 }
 
 /// Parse CLI arguments and dispatch the selected command.
@@ -78,65 +89,130 @@ pub fn run() -> Result<()> {
             project,
             verbose,
             limit,
+            json,
         } => {
             let options = Options::new(project);
+            let project_root = options.project_root.clone();
 
-            println!("zk-mutant: run");
-            println!("project: {:?}", options.project_root);
+            if !json {
+                println!("zk-mutant: run");
+                println!("project: {:?}", project_root);
+            }
 
             // Load Noir project and metrics via noir-metrics.
-            let project = match Project::from_root(options.project_root.clone()) {
+            let project = match Project::from_root(project_root.clone()) {
                 Ok(p) => p,
                 Err(e) => {
-                    eprintln!(
-                        "failed to load Noir project at {:?}: {e}",
-                        options.project_root
-                    );
+                    if json {
+                        let report = MutationRunReport::failure(
+                            project_root,
+                            BaselineReport {
+                                success: false,
+                                exit_code: None,
+                                duration_ms: 0,
+                            },
+                            format!("failed to load Noir project: {e}"),
+                        );
+                        print_json_and_exit(report, 1);
+                    }
+
+                    eprintln!("failed to load Noir project at {:?}: {e}", project_root);
                     return Err(e);
                 }
             };
 
             // Baseline `nargo test` run before mutation testing.
-            match run_nargo_test(project.root()) {
-                Ok(result) => {
-                    println!(
-                        "nargo test finished in {:?} (exit code: {:?}, success: {})",
-                        result.duration, result.exit_code, result.success
-                    );
-
-                    if !result.success {
-                        eprintln!("nargo test failed");
-
-                        if !result.stdout.is_empty() {
-                            eprintln!("stdout from nargo:\n{}", result.stdout);
-                        }
-
-                        if !result.stderr.is_empty() {
-                            eprintln!("stderr from nargo:\n{}", result.stderr);
-                        }
-
-                        // If baseline tests fail, don't attempt mutation testing.
-                        return Err(anyhow::anyhow!("baseline `nargo test` failed"));
-                    }
-                }
+            let baseline_result = match run_nargo_test(project.root()) {
+                Ok(r) => r,
                 Err(e) => {
+                    if json {
+                        let report = MutationRunReport::failure(
+                            project_root,
+                            BaselineReport {
+                                success: false,
+                                exit_code: None,
+                                duration_ms: 0,
+                            },
+                            format!("failed to run `nargo test`: {e}"),
+                        );
+                        print_json_and_exit(report, 1);
+                    }
+
                     eprintln!("failed to run `nargo test` in {:?}: {e}", project.root());
                     return Err(e);
                 }
+            };
+
+            let baseline = BaselineReport::from_nargo(&baseline_result);
+
+            if !json {
+                println!(
+                    "nargo test finished in {:?} (exit code: {:?}, success: {})",
+                    baseline_result.duration, baseline_result.exit_code, baseline_result.success
+                );
+            }
+
+            if !baseline_result.success {
+                if json {
+                    let report = MutationRunReport::failure(
+                        project_root,
+                        baseline,
+                        "baseline `nargo test` failed".to_string(),
+                    );
+                    print_json_and_exit(report, 1);
+                }
+
+                eprintln!("nargo test failed");
+
+                if !baseline_result.stdout.is_empty() {
+                    eprintln!("stdout from nargo:\n{}", baseline_result.stdout);
+                }
+                if !baseline_result.stderr.is_empty() {
+                    eprintln!("stderr from nargo:\n{}", baseline_result.stderr);
+                }
+
+                return Err(anyhow::anyhow!("baseline `nargo test` failed"));
             }
 
             // Discover mutation opportunities.
             let mut mutants = discover_mutants(&project);
             let discovered = mutants.len();
-            println!("discovered {} mutants", discovered);
+
+            if !json {
+                println!("discovered {} mutants", discovered);
+            }
 
             if discovered == 0 {
+                if json {
+                    let report = MutationRunReport::success(
+                        project_root,
+                        0,
+                        0,
+                        baseline,
+                        RunSummary::default(),
+                        Vec::new(),
+                    );
+                    print_json_and_exit(report, 0);
+                }
+
                 println!("no mutants discovered, exiting");
                 return Ok(());
             }
 
             if let Some(limit) = limit {
                 if limit == 0 {
+                    if json {
+                        let report = MutationRunReport::success(
+                            project_root,
+                            discovered,
+                            0,
+                            baseline,
+                            RunSummary::default(),
+                            Vec::new(),
+                        );
+                        print_json_and_exit(report, 0);
+                    }
+
                     println!("mutant limit is 0, exiting");
                     return Ok(());
                 }
@@ -145,14 +221,29 @@ pub fn run() -> Result<()> {
                     mutants.truncate(limit);
                 }
 
-                println!("running {} mutants (of {})", mutants.len(), discovered);
+                if !json {
+                    println!("running {} mutants (of {})", mutants.len(), discovered);
+                }
             }
 
             // Run all mutants sequentially (naive implementation).
+            let executed = mutants.len();
             let summary = run_all_mutants_in_temp(&project, &mut mutants)?;
 
+            if json {
+                let report = MutationRunReport::success(
+                    project_root,
+                    discovered,
+                    executed,
+                    baseline,
+                    summary,
+                    mutants,
+                );
+                print_json_and_exit(report, 0);
+            }
+
             println!("--- mutation run summary ---");
-            println!("mutants total:    {}", mutants.len());
+            println!("mutants total:    {}", executed);
             println!("mutants killed:   {}", summary.killed);
             println!("mutants survived: {}", summary.survived);
             println!("mutants invalid:  {}", summary.invalid);
