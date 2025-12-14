@@ -1,7 +1,6 @@
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use crate::project::Project;
-use anyhow::Result;
 use noir_metrics::MetricsReport;
 
 /// High-level overview of a Noir project used by zk-mutant.
@@ -52,12 +51,6 @@ impl ProjectOverview {
     }
 }
 
-/// Run noir-metrics on the given root and return a high-level overview.
-pub fn scan_project(root: &Path) -> Result<ProjectOverview> {
-    let project = Project::from_root(root.to_path_buf())?;
-    Ok(ProjectOverview::from_project(&project))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -66,7 +59,8 @@ mod tests {
     #[test]
     fn scan_simple_noir_fixture() {
         let root = PathBuf::from("tests/fixtures/simple_noir");
-        let mut overview = scan_project(&root).expect("scan_project should succeed");
+        let project = Project::from_root(root.clone()).expect("Project::from_root should succeed");
+        let mut overview = ProjectOverview::from_project(&project);
 
         overview.root = root;
 

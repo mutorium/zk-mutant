@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -5,6 +6,7 @@ use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 
 use crate::discover::discover_mutants;
+use crate::mutant::Mutant;
 use crate::nargo::run_nargo_test;
 use crate::options::Options;
 use crate::out;
@@ -12,7 +14,7 @@ use crate::project::Project;
 use crate::report::{print_all_mutants, print_surviving_mutants};
 use crate::run_report::{BaselineReport, MutationRunReport, RunSummary};
 use crate::runner::run_all_mutants_in_temp;
-use crate::scan::{ProjectOverview, scan_project};
+use crate::scan::ProjectOverview;
 use crate::ui::Ui;
 
 const EXIT_OK: i32 = 0;
@@ -119,13 +121,22 @@ pub fn run() -> Result<()> {
             ui.title("zk-mutant: scan");
             ui.line(format!("project: {:?}", options.project_root));
 
-            match scan_project(&options.project_root) {
-                Ok(report) => print_scan_summary(&report, &ui),
-                Err(e) => ui.error(format!(
-                    "failed to analyze Noir project at {:?}: {e}",
-                    options.project_root
-                )),
-            }
+            let project = match Project::from_root(options.project_root.clone()) {
+                Ok(p) => p,
+                Err(e) => {
+                    ui.error(format!(
+                        "failed to load Noir project at {:?}: {e}",
+                        options.project_root
+                    ));
+                    return Err(e);
+                }
+            };
+
+            let overview = ProjectOverview::from_project(&project);
+            print_scan_summary(&overview, &ui);
+
+            let mutants = discover_mutants(&project);
+            print_mutation_inventory(&mutants, &ui);
 
             Ok(())
         }
@@ -256,7 +267,7 @@ pub fn run() -> Result<()> {
             let mut mutants = discover_mutants(&project);
             let discovered = mutants.len();
 
-            // Persist full discovery list (pre-limit) like cargo-mutants' mutants.json.
+            // Persist full discovery list (pre-limit).
             if let Err(e) = out::write_mutants_json(&out_dir, &mutants) {
                 ui.warn(format!("failed to write mutants.json: {e}"));
             }
@@ -339,7 +350,7 @@ pub fn run() -> Result<()> {
             // Always persist report to mutants.out/run.json
             let _ = write_run_json(&out_dir, &report);
 
-            // Cargo-mutants style artifacts (best-effort; do not affect stdout JSON).
+            // Best-effort artifact writers.
             if let Err(e) = out::write_outcomes_json(&out_dir, &report) {
                 ui.warn(format!("failed to write outcomes.json: {e}"));
             }
@@ -379,6 +390,41 @@ pub fn run() -> Result<()> {
 
             Ok(())
         }
+    }
+}
+
+fn print_mutation_inventory(mutants: &[Mutant], ui: &Ui) {
+    ui.line("--- mutation inventory ---");
+    ui.line(format!("discovered mutants: {}", mutants.len()));
+
+    if mutants.is_empty() {
+        ui.line("no mutation opportunities found");
+        return;
+    }
+
+    let mut by_operator: BTreeMap<String, usize> = BTreeMap::new();
+    let mut by_file: BTreeMap<String, usize> = BTreeMap::new();
+
+    for m in mutants {
+        let op = format!("{:?}/{}", m.operator.category, m.operator.name);
+        *by_operator.entry(op).or_insert(0) += 1;
+
+        let file = m.span.file.display().to_string();
+        *by_file.entry(file).or_insert(0) += 1;
+    }
+
+    ui.line(format!("unique operators: {}", by_operator.len()));
+    ui.line("by operator:");
+    for (op, count) in by_operator {
+        ui.line(format!("  {op}: {count}"));
+    }
+
+    let mut files: Vec<(String, usize)> = by_file.into_iter().collect();
+    files.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+
+    ui.line("top files:");
+    for (file, count) in files.into_iter().take(10) {
+        ui.line(format!("  {file}: {count}"));
     }
 }
 
