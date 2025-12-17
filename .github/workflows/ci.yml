@@ -14,14 +14,13 @@ jobs:
         with:
           components: rustfmt, clippy
 
-      # Fail fast on formatting
+      - uses: Swatinem/rust-cache@v2
+
       - name: Cargo fmt
         run: cargo fmt --all -- --check
 
-      # Tests (use --locked once Cargo.lock is committed)
       - name: Cargo test
-        run: cargo test --locked
+        run: cargo test --locked --all-features
 
-      # Lints (use --locked once Cargo.lock is committed)
       - name: Cargo clippy
         run: cargo clippy --locked --all-targets --all-features -- -D warnings
