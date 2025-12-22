@@ -254,9 +254,9 @@ checksum = "f52b00d39961fc5b2736ea853c9cc86238e165017a493d1d5c8eac6bdc4cc273"
 
 [[package]]
 name = "noir-metrics"
-version = "0.1.0"
+version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "518d159ae65540d2529ed89ceb7bc2d297d43e269529969c076bd28225ef0c1c"
+checksum = "1023144480ef92f919257a0d2c1441de236d9b7004448281939f56902d0cb9ca"
 dependencies = [
  "anyhow",
  "clap",
