@@ -1,0 +1,14 @@
+# Changelog
+
+All notable changes to this project will be documented in this file.
+
+This project aims to follow Semantic Versioning. While <1.0, minor releases should remain backwards compatible when reasonable.
+
+## [Unreleased] (target: 0.1.0)
+
+### Added
+- `run` command: discover mutants, run baseline `nargo test`, then run per-mutant tests.
+- `--json` output mode (machine-readable JSON to stdout; human output routed to stderr).
+- Output artifacts directory with rotation (`mutants.out/` and `mutants.out.old/`).
+- Snapshot tests (insta) and integration tests using a fake `nargo`.
+- Basic CLI UI abstraction with stable non-colored output under `NO_COLOR=1`.
