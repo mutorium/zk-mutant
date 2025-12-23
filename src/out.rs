@@ -188,3 +188,64 @@ fn write_pretty_json<T: Serialize + ?Sized>(path: &Path, value: &T) -> Result<()
     fs::write(path, json).with_context(|| format!("failed to write {:?}", path))?;
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::discover::discover_mutants;
+    use std::path::PathBuf;
+    use tempfile::TempDir;
+
+    fn non_empty_lines(s: &str) -> usize {
+        s.lines().filter(|l| !l.trim().is_empty()).count()
+    }
+
+    #[test]
+    fn outcome_txts_bucket_exactly_matching_outcomes() {
+        let project = Project::from_root(PathBuf::from("tests/fixtures/simple_noir"))
+            .expect("fixture project should load");
+        let mut discovered = discover_mutants(&project);
+        assert!(
+            discovered.len() >= 4,
+            "expected at least 4 mutants in fixture"
+        );
+
+        // Keep it small and deterministic: 4 mutants with 4 distinct outcomes.
+        let mut m1 = discovered.remove(0);
+        let mut m2 = discovered.remove(0);
+        let mut m3 = discovered.remove(0);
+        let mut m4 = discovered.remove(0);
+
+        m1.outcome = MutantOutcome::Killed;
+        m2.outcome = MutantOutcome::Survived;
+        m3.outcome = MutantOutcome::Invalid;
+        m4.outcome = MutantOutcome::NotRun;
+
+        let mutants = vec![m1, m2, m3, m4];
+
+        let td = TempDir::new().expect("TempDir should create");
+        write_outcome_txts(td.path(), &project, &mutants)
+            .expect("write_outcome_txts should succeed");
+
+        let caught = fs::read_to_string(td.path().join("caught.txt")).expect("read caught.txt");
+        let missed = fs::read_to_string(td.path().join("missed.txt")).expect("read missed.txt");
+        let unviable =
+            fs::read_to_string(td.path().join("unviable.txt")).expect("read unviable.txt");
+
+        assert_eq!(
+            non_empty_lines(&caught),
+            1,
+            "caught.txt should list only killed"
+        );
+        assert_eq!(
+            non_empty_lines(&missed),
+            1,
+            "missed.txt should list only survived"
+        );
+        assert_eq!(
+            non_empty_lines(&unviable),
+            1,
+            "unviable.txt should list only invalid"
+        );
+    }
+}

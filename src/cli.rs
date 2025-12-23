@@ -22,6 +22,14 @@ const EXIT_OK: i32 = 0;
 const EXIT_ERROR: i32 = 1;
 const EXIT_SURVIVORS: i32 = 2;
 
+fn exit_code_for_survivors_policy(fail_on_survivors: bool, survived: usize) -> i32 {
+    if fail_on_survivors && survived > 0 {
+        EXIT_SURVIVORS
+    } else {
+        EXIT_OK
+    }
+}
+
 /// Top-level CLI arguments for the `zk-mutant` binary.
 #[derive(Debug, Parser)]
 #[command(
@@ -511,7 +519,7 @@ pub fn run() -> Result<()> {
             fail_on_survivors,
             out_dir,
         } => {
-            let ui = Ui::new(json);
+            let mut ui = Ui::new(json);
             let options = Options::new(project);
             let project_root = options.project_root.clone();
 
@@ -691,15 +699,10 @@ pub fn run() -> Result<()> {
 
             // Run all mutants sequentially (naive implementation).
             let executed = mutants.len();
-            let summary = run_all_mutants_in_temp(&project, &mut mutants, &ui)?;
+            let summary = run_all_mutants_in_temp(&project, &mut mutants, &mut ui)?;
 
-            // CI policy
-            let wants_ci_fail = fail_on_survivors && summary.survived > 0;
-            let exit_code = if wants_ci_fail {
-                EXIT_SURVIVORS
-            } else {
-                EXIT_OK
-            };
+            let exit_code = exit_code_for_survivors_policy(fail_on_survivors, summary.survived);
+            let wants_ci_fail = exit_code == EXIT_SURVIVORS;
 
             let report = MutationRunReport::success(
                 project_root.clone(),
@@ -826,4 +829,18 @@ fn print_scan_summary(overview: &ProjectOverview, ui: &Ui) {
         "test code ratio:         {:.2}% (test_lines / code_lines)",
         overview.test_code_ratio
     ));
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn survivors_policy_exit_code_truth_table() {
+        assert_eq!(exit_code_for_survivors_policy(false, 0), EXIT_OK);
+        assert_eq!(exit_code_for_survivors_policy(false, 1), EXIT_OK);
+        assert_eq!(exit_code_for_survivors_policy(true, 0), EXIT_OK);
+        assert_eq!(exit_code_for_survivors_policy(true, 1), EXIT_SURVIVORS);
+        assert_eq!(exit_code_for_survivors_policy(true, 2), EXIT_SURVIVORS);
+    }
 }

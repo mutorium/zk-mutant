@@ -234,6 +234,29 @@ fn preflight_fixture_json_snapshot() {
 }
 
 #[test]
+fn preflight_baseline_fail_snapshot() {
+    let out = run_zk_mutant(
+        &["preflight", "--project", "tests/fixtures/simple_noir"],
+        &[("ZK_MUTANT_FAKE_NARGO_FAIL", "1")],
+    );
+    insta::assert_snapshot!("preflight_baseline_fail", out);
+}
+
+#[test]
+fn preflight_baseline_fail_json_snapshot() {
+    let out = run_zk_mutant_stdout(
+        &[
+            "preflight",
+            "--project",
+            "tests/fixtures/simple_noir",
+            "--json",
+        ],
+        &[("ZK_MUTANT_FAKE_NARGO_FAIL", "1")],
+    );
+    insta::assert_snapshot!("preflight_baseline_fail_json", out);
+}
+
+#[test]
 fn list_fixture_snapshot() {
     let out = run_zk_mutant(&["list", "--project", "tests/fixtures/simple_noir"], &[]);
     insta::assert_snapshot!("list_fixture", out);

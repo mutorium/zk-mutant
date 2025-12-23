@@ -74,7 +74,7 @@ pub fn run_single_mutant_in_temp(project: &Project, mutant: &Mutant) -> Result<N
 pub fn run_all_mutants_in_temp(
     project: &Project,
     mutants: &mut [Mutant],
-    ui: &Ui,
+    ui: &mut Ui,
 ) -> Result<RunSummary> {
     run_all_mutants_with(project, mutants, run_single_mutant_in_temp, ui)
 }
@@ -84,7 +84,7 @@ fn run_all_mutants_with(
     project: &Project,
     mutants: &mut [Mutant],
     run_one: fn(&Project, &Mutant) -> Result<NargoTestResult>,
-    ui: &Ui,
+    ui: &mut Ui,
 ) -> Result<RunSummary> {
     let mut summary = RunSummary::default();
 
@@ -310,8 +310,8 @@ mod tests {
             }
         }
 
-        let ui = Ui::silent();
-        let summary = run_all_mutants_with(&project, &mut mutants, fake_run_one, &ui).unwrap();
+        let mut ui = Ui::silent();
+        let summary = run_all_mutants_with(&project, &mut mutants, fake_run_one, &mut ui).unwrap();
 
         insta::assert_debug_snapshot!("run_all_mutants_summary", summary);
         insta::assert_debug_snapshot!("run_all_mutants_mutants", mutants);

@@ -16,5 +16,4 @@ This project aims to follow Semantic Versioning. While <1.0, minor releases shou
 - Discovery: avoid generating overlapping single-character mutants inside `<=` and `>=`, and add a regression test to lock the behavior.
 - Print project `compiler_version` (from Nargo.toml) and `nargo --version` in `list`/`run`, and show clearer baseline failure hints for likely toolchain mismatches.
 - Add preflight subcommand for copy/paste-friendly toolchain + baseline diagnostics (optional JSON), and print compiler_version/nargo --version in list/run with a helpful mismatch hint on baseline failures.
-- Tighten CLI/UI/output-path assertions and add coverage for edge cases uncovered by cargo-mutants, reducing missed mutants to 9 (158 caught, 34 unviable).
-
+- Tighten CLI/UI/output-path assertions and add coverage for edge cases uncovered by cargo-mutants
