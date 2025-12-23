@@ -105,8 +105,8 @@ pub enum Command {
     },
 }
 
-fn print_json_and_exit(report: MutationRunReport, exit_code: i32) -> ! {
-    let json = serde_json::to_string_pretty(&report).expect("serialize report to json");
+fn print_json_and_exit(report: &MutationRunReport, exit_code: i32) {
+    let json = serde_json::to_string_pretty(report).expect("serialize report to json");
     println!("{json}");
     std::process::exit(exit_code);
 }
@@ -167,8 +167,8 @@ struct PreflightReport {
     error: Option<String>,
 }
 
-fn print_preflight_json_and_exit(report: PreflightReport, exit_code: i32) -> ! {
-    let json = serde_json::to_string_pretty(&report).expect("serialize preflight report to json");
+fn print_preflight_json_and_exit(report: &PreflightReport, exit_code: i32) {
+    let json = serde_json::to_string_pretty(report).expect("serialize preflight report to json");
     println!("{json}");
     std::process::exit(exit_code);
 }
@@ -323,7 +323,7 @@ pub fn run() -> Result<()> {
                     };
 
                     if json {
-                        print_preflight_json_and_exit(report, EXIT_ERROR);
+                        print_preflight_json_and_exit(&report, EXIT_ERROR);
                     }
 
                     ui.error(format!(
@@ -353,7 +353,7 @@ pub fn run() -> Result<()> {
                         baseline,
                         error: Some("baseline `nargo test` failed".to_string()),
                     };
-                    print_preflight_json_and_exit(report, EXIT_ERROR);
+                    print_preflight_json_and_exit(&report, EXIT_ERROR);
                 }
 
                 ui.error("nargo test failed");
@@ -367,7 +367,7 @@ pub fn run() -> Result<()> {
 
                 print_baseline_failure_hint(&ui, &toolchain);
 
-                return Err(anyhow::anyhow!("baseline `nargo test` failed"));
+                anyhow::bail!("baseline `nargo test` failed");
             }
 
             if json {
@@ -381,7 +381,7 @@ pub fn run() -> Result<()> {
                     baseline,
                     error: None,
                 };
-                print_preflight_json_and_exit(report, EXIT_OK);
+                print_preflight_json_and_exit(&report, EXIT_OK);
             }
 
             Ok(())
@@ -438,11 +438,7 @@ pub fn run() -> Result<()> {
 
             let mut listed_mutants = discovered_mutants.clone();
             if let Some(limit) = limit {
-                if limit == 0 {
-                    listed_mutants.clear();
-                } else if listed_mutants.len() > limit {
-                    listed_mutants.truncate(limit);
-                }
+                listed_mutants.truncate(limit);
             }
 
             if let Some(out_dir) = out_dir.as_ref() {
@@ -532,7 +528,7 @@ pub fn run() -> Result<()> {
                         },
                         format!("failed to prepare out dir {:?}: {e}", out_dir),
                     );
-                    print_json_and_exit(report, EXIT_ERROR);
+                    print_json_and_exit(&report, EXIT_ERROR);
                 }
                 ui.error(format!("failed to prepare out dir {:?}: {e}", out_dir));
                 return Err(e);
@@ -564,7 +560,7 @@ pub fn run() -> Result<()> {
                     let _ = write_run_json(&out_dir, &report);
 
                     if json {
-                        print_json_and_exit(report, EXIT_ERROR);
+                        print_json_and_exit(&report, EXIT_ERROR);
                     }
 
                     ui.error(format!(
@@ -591,7 +587,7 @@ pub fn run() -> Result<()> {
                     let _ = write_run_json(&out_dir, &report);
 
                     if json {
-                        print_json_and_exit(report, EXIT_ERROR);
+                        print_json_and_exit(&report, EXIT_ERROR);
                     }
 
                     ui.error(format!(
@@ -618,7 +614,7 @@ pub fn run() -> Result<()> {
                 let _ = write_run_json(&out_dir, &report);
 
                 if json {
-                    print_json_and_exit(report, EXIT_ERROR);
+                    print_json_and_exit(&report, EXIT_ERROR);
                 }
 
                 ui.error("nargo test failed");
@@ -633,7 +629,7 @@ pub fn run() -> Result<()> {
                 // Helpful hint for likely version mismatch.
                 print_baseline_failure_hint(&ui, &toolchain);
 
-                return Err(anyhow::anyhow!("baseline `nargo test` failed"));
+                anyhow::bail!("baseline `nargo test` failed");
             }
 
             // Discover mutation opportunities.
@@ -659,7 +655,7 @@ pub fn run() -> Result<()> {
                 let _ = write_run_json(&out_dir, &report);
 
                 if json {
-                    print_json_and_exit(report, EXIT_OK);
+                    print_json_and_exit(&report, EXIT_OK);
                 }
 
                 ui.line("no mutants discovered, exiting");
@@ -679,17 +675,13 @@ pub fn run() -> Result<()> {
                     let _ = write_run_json(&out_dir, &report);
 
                     if json {
-                        print_json_and_exit(report, EXIT_OK);
+                        print_json_and_exit(&report, EXIT_OK);
                     }
 
                     ui.line("mutant limit is 0, exiting");
                     return Ok(());
                 }
-
-                if mutants.len() > limit {
-                    mutants.truncate(limit);
-                }
-
+                mutants.truncate(limit);
                 ui.line(format!(
                     "running {} mutants (of {})",
                     mutants.len(),
@@ -738,7 +730,7 @@ pub fn run() -> Result<()> {
             }
 
             if json {
-                print_json_and_exit(report, exit_code);
+                print_json_and_exit(&report, exit_code);
             }
 
             ui.line("--- mutation run summary ---");

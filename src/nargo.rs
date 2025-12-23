@@ -154,4 +154,17 @@ mod tests {
 
         let _ = fs::remove_dir_all(&dir);
     }
+
+    #[test]
+    fn compiler_version_errors_when_nargo_toml_is_a_directory() {
+        let dir = mk_temp_dir();
+
+        // Make "Nargo.toml" a directory so read_to_string returns a non-NotFound error.
+        fs::create_dir_all(dir.join("Nargo.toml")).unwrap();
+
+        let err = compiler_version_from_nargo_toml(&dir).unwrap_err();
+        assert!(err.to_string().contains("failed to read"));
+
+        let _ = fs::remove_dir_all(&dir);
+    }
 }
