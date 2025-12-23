@@ -6,6 +6,8 @@ status: exit status: 0
 --- stdout ---
 zk-mutant: run
 project: "tests/fixtures/simple_noir"
+compiler_version (Nargo.toml): <none>
+nargo --version: nargo 0.0.0-test
 nargo test finished in <DUR> (exit code: Some(0), success: true)
 discovered 4 mutants
 mutant limit is 0, exiting

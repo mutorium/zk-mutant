@@ -6,6 +6,8 @@ status: exit status: 0
 --- stdout ---
 zk-mutant: list
 project: "tests/fixtures/simple_noir"
+compiler_version (Nargo.toml): <none>
+nargo --version: nargo 0.0.0-test
 discovered 4 mutants
 listed 4 mutants
 --- mutants (discovered) ---

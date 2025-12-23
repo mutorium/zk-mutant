@@ -6,10 +6,16 @@ status: exit status: 1
 --- stdout ---
 zk-mutant: run
 project: "tests/fixtures/simple_noir"
+compiler_version (Nargo.toml): <none>
+nargo --version: nargo 0.0.0-test
 nargo test finished in <DUR> (exit code: Some(1), success: false)
 --- stderr ---
 nargo test failed
 stderr from nargo:
 fake nargo: failing as requested
 
+hint: baseline `nargo test` failures are often caused by a Noir/Nargo toolchain mismatch.
+hint: project compiler_version (Nargo.toml): <none>
+hint: your `nargo --version`: nargo 0.0.0-test
+hint: try using the project's pinned toolchain (or align your Noir/Nargo version) and re-run.
 Error: baseline `nargo test` failed

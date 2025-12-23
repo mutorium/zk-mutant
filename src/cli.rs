@@ -8,7 +8,7 @@ use serde::Serialize;
 
 use crate::discover::discover_mutants;
 use crate::mutant::Mutant;
-use crate::nargo::run_nargo_test;
+use crate::nargo::{compiler_version_from_nargo_toml, nargo_version, run_nargo_test};
 use crate::options::Options;
 use crate::out;
 use crate::project::Project;
@@ -141,6 +141,67 @@ struct MutationListReport {
     error: Option<String>,
 }
 
+#[derive(Debug, Default, Clone)]
+struct ToolchainInfo {
+    compiler_version: Option<String>,
+    nargo_version: Option<String>,
+}
+
+/// Print toolchain context (copy/paste friendly) for diagnosing version mismatches.
+/// Only used for non-JSON output.
+fn print_toolchain_info(ui: &Ui, project_root: &Path) -> ToolchainInfo {
+    let compiler_version = match compiler_version_from_nargo_toml(project_root) {
+        Ok(v) => v,
+        Err(e) => {
+            ui.warn(format!("compiler_version (Nargo.toml): <error: {e}>"));
+            None
+        }
+    };
+
+    ui.line(format!(
+        "compiler_version (Nargo.toml): {}",
+        compiler_version.as_deref().unwrap_or("<none>")
+    ));
+
+    let nargo_v = match nargo_version() {
+        Ok(v) => Some(v),
+        Err(e) => {
+            ui.warn(format!("nargo --version: <error: {e}>"));
+            None
+        }
+    };
+
+    if let Some(v) = nargo_v.as_deref() {
+        ui.line(format!("nargo --version: {v}"));
+    }
+
+    ToolchainInfo {
+        compiler_version,
+        nargo_version: nargo_v,
+    }
+}
+
+fn print_baseline_failure_hint(ui: &Ui, toolchain: &ToolchainInfo) {
+    ui.warn(
+        "hint: baseline `nargo test` failures are often caused by a Noir/Nargo toolchain mismatch.",
+    );
+
+    if let Some(v) = toolchain.compiler_version.as_deref() {
+        ui.warn(format!("hint: project compiler_version (Nargo.toml): {v}"));
+    } else {
+        ui.warn("hint: project compiler_version (Nargo.toml): <none>".to_string());
+    }
+
+    if let Some(v) = toolchain.nargo_version.as_deref() {
+        ui.warn(format!("hint: your `nargo --version`: {v}"));
+    } else {
+        ui.warn("hint: your `nargo --version`: <unavailable>".to_string());
+    }
+
+    ui.warn("hint: try using the project's pinned toolchain (or align your Noir/Nargo version) and re-run."
+        .to_string());
+}
+
 /// Parse CLI arguments and dispatch the selected command.
 pub fn run() -> Result<()> {
     let cli = Cli::parse();
@@ -185,6 +246,11 @@ pub fn run() -> Result<()> {
 
             ui.title("zk-mutant: list");
             ui.line(format!("project: {:?}", project_root));
+
+            // toolchain/version awareness (non-JSON output only).
+            if !json {
+                let _toolchain = print_toolchain_info(&ui, &project_root);
+            }
 
             let project = match Project::from_root(project_root.clone()) {
                 Ok(p) => p,
@@ -322,6 +388,13 @@ pub fn run() -> Result<()> {
             ui.title("zk-mutant: run");
             ui.line(format!("project: {:?}", project_root));
 
+            // toolchain/version awareness (non-JSON output only).
+            let toolchain = if !json {
+                print_toolchain_info(&ui, &project_root)
+            } else {
+                ToolchainInfo::default()
+            };
+
             // Load Noir project and metrics via noir-metrics.
             let project = match Project::from_root(project_root.clone()) {
                 Ok(p) => p,
@@ -403,6 +476,9 @@ pub fn run() -> Result<()> {
                 if !baseline_result.stderr.is_empty() {
                     ui.error(format!("stderr from nargo:\n{}", baseline_result.stderr));
                 }
+
+                // Helpful hint for likely version mismatch.
+                print_baseline_failure_hint(&ui, &toolchain);
 
                 return Err(anyhow::anyhow!("baseline `nargo test` failed"));
             }

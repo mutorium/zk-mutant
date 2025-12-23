@@ -14,3 +14,4 @@ This project aims to follow Semantic Versioning. While <1.0, minor releases shou
 - Basic CLI UI abstraction with stable non-colored output under `NO_COLOR=1`.
 - (internal) Add CLI integration snapshots for `list` command.
 - Discovery: avoid generating overlapping single-character mutants inside `<=` and `>=`, and add a regression test to lock the behavior.
+- Print project `compiler_version` (from Nargo.toml) and `nargo --version` in `list`/`run`, and show clearer baseline failure hints for likely toolchain mismatches.

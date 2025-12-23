@@ -17,6 +17,12 @@ fn make_fake_nargo_dir() -> TempDir {
         let script = r#"#!/usr/bin/env bash
 set -euo pipefail
 
+# Support version queries (zk-mutant prints this for toolchain awareness).
+if [[ "${1-}" == "--version" || "${1-}" == "-V" || "${1-}" == "version" ]]; then
+  echo "nargo 0.0.0-test"
+  exit 0
+fi
+
 if [[ "${1-}" != "test" ]]; then
   echo "fake nargo: only 'test' supported" >&2
   exit 2
@@ -41,9 +47,17 @@ exit 0
     {
         let nargo_path = td.path().join("nargo.cmd");
         let script = r#"@echo off
+if "%1"=="--version" goto version
+if "%1"=="-V" goto version
+if "%1"=="version" goto version
+
 if "%1"=="test" goto test
 echo fake nargo: only 'test' supported 1>&2
 exit /b 2
+
+:version
+echo nargo 0.0.0-test
+exit /b 0
 
 :test
 if "%ZK_MUTANT_FAKE_NARGO_FAIL%"=="1" (
