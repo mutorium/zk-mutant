@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
+use serde::Serialize;
 
 use crate::discover::discover_mutants;
 use crate::mutant::Mutant;
@@ -11,7 +12,7 @@ use crate::nargo::run_nargo_test;
 use crate::options::Options;
 use crate::out;
 use crate::project::Project;
-use crate::report::{print_all_mutants, print_surviving_mutants};
+use crate::report::{format_mutant_with_location, print_all_mutants, print_surviving_mutants};
 use crate::run_report::{BaselineReport, MutationRunReport, RunSummary};
 use crate::runner::run_all_mutants_in_temp;
 use crate::scan::ProjectOverview;
@@ -37,11 +38,30 @@ pub struct Cli {
 /// Subcommands supported by `zk-mutant`.
 #[derive(Debug, Subcommand)]
 pub enum Command {
-    /// Run a scan of the project.
+    /// Show a project overview and mutation inventory summary.
     Scan {
         /// Path to the Noir project root or any path inside it.
         #[arg(long, default_value = ".")]
         project: PathBuf,
+    },
+
+    /// List discovered mutants without executing tests.
+    List {
+        /// Path to the Noir project root or any path inside it.
+        #[arg(long, default_value = ".")]
+        project: PathBuf,
+
+        /// Show only the first N discovered mutants (deterministic order).
+        #[arg(long)]
+        limit: Option<usize>,
+
+        /// Emit a machine-readable JSON report to stdout.
+        #[arg(long)]
+        json: bool,
+
+        /// Where to write discovery artifacts (writes `mutants.json` when set).
+        #[arg(long)]
+        out_dir: Option<PathBuf>,
     },
 
     /// Run mutation testing.
@@ -109,6 +129,18 @@ fn write_run_json(out_dir: &Path, report: &MutationRunReport) -> Result<()> {
     Ok(())
 }
 
+#[derive(Debug, Serialize)]
+struct MutationListReport {
+    tool: &'static str,
+    version: &'static str,
+    project_root: PathBuf,
+    discovered: usize,
+    listed: usize,
+    mutants: Vec<Mutant>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    error: Option<String>,
+}
+
 /// Parse CLI arguments and dispatch the selected command.
 pub fn run() -> Result<()> {
     let cli = Cli::parse();
@@ -137,6 +169,121 @@ pub fn run() -> Result<()> {
 
             let mutants = discover_mutants(&project);
             print_mutation_inventory(&mutants, &ui);
+
+            Ok(())
+        }
+
+        Command::List {
+            project,
+            limit,
+            json,
+            out_dir,
+        } => {
+            let ui = Ui::new(json);
+            let options = Options::new(project);
+            let project_root = options.project_root.clone();
+
+            ui.title("zk-mutant: list");
+            ui.line(format!("project: {:?}", project_root));
+
+            let project = match Project::from_root(project_root.clone()) {
+                Ok(p) => p,
+                Err(e) => {
+                    let report = MutationListReport {
+                        tool: "zk-mutant",
+                        version: env!("CARGO_PKG_VERSION"),
+                        project_root: project_root.clone(),
+                        discovered: 0,
+                        listed: 0,
+                        mutants: Vec::new(),
+                        error: Some(format!("failed to load Noir project: {e}")),
+                    };
+
+                    if json {
+                        let txt =
+                            serde_json::to_string_pretty(&report).expect("serialize list report");
+                        println!("{txt}");
+                        std::process::exit(EXIT_ERROR);
+                    }
+
+                    ui.error(format!(
+                        "failed to load Noir project at {:?}: {e}",
+                        project_root
+                    ));
+                    return Err(e);
+                }
+            };
+
+            let discovered_mutants = discover_mutants(&project);
+            let discovered = discovered_mutants.len();
+
+            let mut listed_mutants = discovered_mutants.clone();
+            if let Some(limit) = limit {
+                if limit == 0 {
+                    listed_mutants.clear();
+                } else if listed_mutants.len() > limit {
+                    listed_mutants.truncate(limit);
+                }
+            }
+
+            if let Some(out_dir) = out_dir.as_ref() {
+                if let Err(e) = prepare_out_dir(out_dir) {
+                    let report = MutationListReport {
+                        tool: "zk-mutant",
+                        version: env!("CARGO_PKG_VERSION"),
+                        project_root: project_root.clone(),
+                        discovered,
+                        listed: listed_mutants.len(),
+                        mutants: Vec::new(),
+                        error: Some(format!("failed to prepare out dir {:?}: {e}", out_dir)),
+                    };
+
+                    if json {
+                        let txt =
+                            serde_json::to_string_pretty(&report).expect("serialize list report");
+                        println!("{txt}");
+                        std::process::exit(EXIT_ERROR);
+                    }
+
+                    ui.error(format!("failed to prepare out dir {:?}: {e}", out_dir));
+                    return Err(e);
+                }
+
+                if let Err(e) = out::write_mutants_json(out_dir, &discovered_mutants) {
+                    ui.warn(format!("failed to write mutants.json: {e}"));
+                }
+            }
+
+            if json {
+                let report = MutationListReport {
+                    tool: "zk-mutant",
+                    version: env!("CARGO_PKG_VERSION"),
+                    project_root: project_root.clone(),
+                    discovered,
+                    listed: listed_mutants.len(),
+                    mutants: listed_mutants,
+                    error: None,
+                };
+                let txt = serde_json::to_string_pretty(&report).expect("serialize list report");
+                println!("{txt}");
+                std::process::exit(EXIT_OK);
+            }
+
+            ui.line(format!("discovered {} mutants", discovered));
+            if let Some(limit) = limit {
+                ui.line(format!(
+                    "listed {} mutants (limit: {})",
+                    listed_mutants.len(),
+                    limit
+                ));
+            } else {
+                ui.line(format!("listed {} mutants", listed_mutants.len()));
+            }
+
+            ui.line("--- mutants (discovered) ---");
+            for m in &listed_mutants {
+                ui.line(format_mutant_with_location(&project, m));
+            }
 
             Ok(())
         }
@@ -189,7 +336,6 @@ pub fn run() -> Result<()> {
                         format!("failed to load Noir project: {e}"),
                     );
                     let _ = write_run_json(&out_dir, &report);
-                    let _ = out::write_log(&out_dir, &report);
 
                     if json {
                         print_json_and_exit(report, EXIT_ERROR);
@@ -217,7 +363,6 @@ pub fn run() -> Result<()> {
                         format!("failed to run `nargo test`: {e}"),
                     );
                     let _ = write_run_json(&out_dir, &report);
-                    let _ = out::write_log(&out_dir, &report);
 
                     if json {
                         print_json_and_exit(report, EXIT_ERROR);
@@ -245,7 +390,6 @@ pub fn run() -> Result<()> {
                     "baseline `nargo test` failed".to_string(),
                 );
                 let _ = write_run_json(&out_dir, &report);
-                let _ = out::write_log(&out_dir, &report);
 
                 if json {
                     print_json_and_exit(report, EXIT_ERROR);
@@ -267,7 +411,7 @@ pub fn run() -> Result<()> {
             let mut mutants = discover_mutants(&project);
             let discovered = mutants.len();
 
-            // Persist full discovery list (pre-limit).
+            // Persist discovery list (pre-limit) as mutants.json
             if let Err(e) = out::write_mutants_json(&out_dir, &mutants) {
                 ui.warn(format!("failed to write mutants.json: {e}"));
             }
@@ -284,7 +428,6 @@ pub fn run() -> Result<()> {
                     Vec::new(),
                 );
                 let _ = write_run_json(&out_dir, &report);
-                let _ = out::write_log(&out_dir, &report);
 
                 if json {
                     print_json_and_exit(report, EXIT_OK);
@@ -305,7 +448,6 @@ pub fn run() -> Result<()> {
                         Vec::new(),
                     );
                     let _ = write_run_json(&out_dir, &report);
-                    let _ = out::write_log(&out_dir, &report);
 
                     if json {
                         print_json_and_exit(report, EXIT_OK);
@@ -350,16 +492,18 @@ pub fn run() -> Result<()> {
             // Always persist report to mutants.out/run.json
             let _ = write_run_json(&out_dir, &report);
 
-            // Best-effort artifact writers.
             if let Err(e) = out::write_outcomes_json(&out_dir, &report) {
                 ui.warn(format!("failed to write outcomes.json: {e}"));
             }
+
             if let Err(e) = out::write_outcome_txts(&out_dir, &project, &report.mutants) {
                 ui.warn(format!("failed to write outcome txt files: {e}"));
             }
+
             if let Err(e) = out::write_diff_dir(&out_dir, &report.mutants) {
                 ui.warn(format!("failed to write diff dir: {e}"));
             }
+
             if let Err(e) = out::write_log(&out_dir, &report) {
                 ui.warn(format!("failed to write log: {e}"));
             }
@@ -403,17 +547,27 @@ fn print_mutation_inventory(mutants: &[Mutant], ui: &Ui) {
     }
 
     let mut by_operator: BTreeMap<String, usize> = BTreeMap::new();
+    let mut by_category: BTreeMap<String, usize> = BTreeMap::new();
     let mut by_file: BTreeMap<String, usize> = BTreeMap::new();
 
     for m in mutants {
         let op = format!("{:?}/{}", m.operator.category, m.operator.name);
         *by_operator.entry(op).or_insert(0) += 1;
 
+        let cat = format!("{:?}", m.operator.category);
+        *by_category.entry(cat).or_insert(0) += 1;
+
         let file = m.span.file.display().to_string();
         *by_file.entry(file).or_insert(0) += 1;
     }
 
     ui.line(format!("unique operators: {}", by_operator.len()));
+
+    ui.line("by category:");
+    for (cat, count) in by_category {
+        ui.line(format!("  {cat}: {count}"));
+    }
+
     ui.line("by operator:");
     for (op, count) in by_operator {
         ui.line(format!("  {op}: {count}"));

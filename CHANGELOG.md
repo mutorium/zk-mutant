@@ -12,3 +12,4 @@ This project aims to follow Semantic Versioning. While <1.0, minor releases shou
 - Output artifacts directory with rotation (`mutants.out/` and `mutants.out.old/`).
 - Snapshot tests (insta) and integration tests using a fake `nargo`.
 - Basic CLI UI abstraction with stable non-colored output under `NO_COLOR=1`.
+- (internal) Add CLI integration snapshots for `list` command.

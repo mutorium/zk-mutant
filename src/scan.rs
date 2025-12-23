@@ -54,14 +54,15 @@ impl ProjectOverview {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::project::Project;
     use std::path::PathBuf;
 
     #[test]
-    fn scan_simple_noir_fixture() {
+    fn scan_simple_noir_fixture_overview_snapshot() {
         let root = PathBuf::from("tests/fixtures/simple_noir");
         let project = Project::from_root(root.clone()).expect("Project::from_root should succeed");
-        let mut overview = ProjectOverview::from_project(&project);
 
+        let mut overview = ProjectOverview::from_project(&project);
         overview.root = root;
 
         insta::assert_debug_snapshot!("scan_simple_noir", overview);

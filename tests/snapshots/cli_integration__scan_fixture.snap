@@ -18,6 +18,8 @@ test code ratio:         50.00% (test_lines / code_lines)
 --- mutation inventory ---
 discovered mutants: 4
 unique operators: 3
+by category:
+  Condition: 4
 by operator:
   Condition/eq_to_neq: 2
   Condition/lt_to_ge: 1

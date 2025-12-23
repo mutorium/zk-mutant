@@ -197,6 +197,21 @@ fn scan_fixture_snapshot() {
 }
 
 #[test]
+fn list_fixture_snapshot() {
+    let out = run_zk_mutant(&["list", "--project", "tests/fixtures/simple_noir"], &[]);
+    insta::assert_snapshot!("list_fixture", out);
+}
+
+#[test]
+fn list_fixture_json_snapshot() {
+    let out = run_zk_mutant_stdout(
+        &["list", "--project", "tests/fixtures/simple_noir", "--json"],
+        &[],
+    );
+    insta::assert_snapshot!("list_fixture_json", out);
+}
+
+#[test]
 fn run_limit_0_snapshot() {
     let out = run_zk_mutant(
         &[
