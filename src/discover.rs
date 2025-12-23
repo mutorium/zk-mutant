@@ -1,4 +1,5 @@
 use std::ops::Range;
+use std::path::Path;
 
 use crate::mutant::{Mutant, MutantOutcome, MutationOperator, OperatorCategory};
 use crate::project::Project;
@@ -18,53 +19,7 @@ pub fn discover_mutants(project: &Project) -> Vec<Mutant> {
             }
         };
 
-        // Compute byte ranges that belong to #[test] functions in this file.
-        let test_ranges = find_test_code_ranges(&code);
-
-        for (pattern, op_name, category, replacement) in comparison_mutation_rules() {
-            let mut search_start: usize = 0;
-
-            while let Some(idx) = code[search_start..].find(pattern) {
-                let start = search_start + idx;
-                let end = start + pattern.len();
-
-                // Keeps the search making progress even if `end` is wrong (e.g. under mutation).
-                let mut next_search_start = advance_search_start(start, end, code.len());
-
-                // Ensure forward progress even if `advance_search_start` is wrong (e.g. under mutation).
-                if next_search_start <= search_start {
-                    next_search_start = search_start.saturating_add(1).min(code.len());
-                }
-
-                // Skip operators that live inside #[test] functions.
-                if in_any_range(start, &test_ranges) {
-                    search_start = next_search_start;
-                    continue;
-                }
-
-                let span = SourceSpan {
-                    file: path.clone(),
-                    start: start as u32,
-                    end: end as u32,
-                };
-
-                let mutant = Mutant {
-                    id: 0, // placeholder, will be overwritten after sorting
-                    operator: MutationOperator {
-                        category: category.clone(),
-                        name: op_name.to_string(),
-                    },
-                    span,
-                    original_snippet: pattern.to_string(),
-                    mutated_snippet: replacement.to_string(),
-                    outcome: MutantOutcome::NotRun,
-                    duration_ms: None,
-                };
-
-                mutants.push(mutant);
-                search_start = next_search_start;
-            }
-        }
+        mutants.extend(discover_mutants_in_code(&path, &code));
     }
 
     // 1) Sort by file, then by start offset
@@ -82,10 +37,87 @@ pub fn discover_mutants(project: &Project) -> Vec<Mutant> {
     mutants
 }
 
+/// Discover mutants in a single file's code (project-relative `path`).
+fn discover_mutants_in_code(path: &Path, code: &str) -> Vec<Mutant> {
+    let mut mutants = Vec::new();
+
+    // Compute byte ranges that belong to #[test] functions in this file.
+    let test_ranges = find_test_code_ranges(code);
+
+    for (pattern, op_name, category, replacement) in comparison_mutation_rules() {
+        let mut search_start: usize = 0;
+
+        while let Some(idx) = code[search_start..].find(pattern) {
+            let start = search_start + idx;
+            let end = start + pattern.len();
+
+            // Keeps the search making progress even if `end` is wrong (e.g. under mutation).
+            let mut next_search_start = advance_search_start(start, end, code.len());
+
+            // Ensure forward progress even if `advance_search_start` is wrong (e.g. under mutation).
+            if next_search_start <= search_start {
+                next_search_start = search_start.saturating_add(1).min(code.len());
+            }
+
+            // Avoid overlapping single-character matches inside multi-character operators.
+            // Example: `<` should not match the `<` of `<=`, and `>` should not match the `>` of `>=`.
+            if should_skip_overlapping_single_char(pattern, code.as_bytes(), start) {
+                search_start = next_search_start;
+                continue;
+            }
+
+            // Skip operators that live inside #[test] functions.
+            if in_any_range(start, &test_ranges) {
+                search_start = next_search_start;
+                continue;
+            }
+
+            let span = SourceSpan {
+                file: path.to_path_buf(),
+                start: start as u32,
+                end: end as u32,
+            };
+
+            let mutant = Mutant {
+                id: 0, // placeholder, will be overwritten after sorting
+                operator: MutationOperator {
+                    category: category.clone(),
+                    name: op_name.to_string(),
+                },
+                span,
+                original_snippet: pattern.to_string(),
+                mutated_snippet: replacement.to_string(),
+                outcome: MutantOutcome::NotRun,
+                duration_ms: None,
+            };
+
+            mutants.push(mutant);
+            search_start = next_search_start;
+        }
+    }
+
+    mutants
+}
+
+fn should_skip_overlapping_single_char(pattern: &str, bytes: &[u8], start: usize) -> bool {
+    if pattern.len() != 1 {
+        return false;
+    }
+
+    let Some(&next) = bytes.get(start + 1) else {
+        return false;
+    };
+
+    match pattern {
+        "<" => next == b'=',
+        ">" => next == b'=',
+        _ => false,
+    }
+}
+
 /// Simple set of comparison mutation rules for v0.1.
 ///
-/// Multi-character operators go first to avoid partially matching them
-/// as single-character operators.
+/// Multi-character operators appear before single-character operators.
 fn comparison_mutation_rules()
 -> &'static [(&'static str, &'static str, OperatorCategory, &'static str)] {
     use OperatorCategory::Condition;
@@ -213,6 +245,44 @@ mod tests {
         }
 
         out
+    }
+
+    #[test]
+    fn discover_does_not_create_overlapping_single_char_mutants() {
+        let code = r#"
+fn a(x: u32, y: u32) {
+    assert(x <= y);
+    assert(x >= y);
+    assert(x < y);
+    assert(x > y);
+}
+"#;
+
+        let path = PathBuf::from("src/main.nr");
+        let mutants = discover_mutants_in_code(&path, code);
+
+        // One mutant per operator occurrence: <=, >=, <, >
+        assert_eq!(mutants.len(), 4);
+
+        let le_positions = find_all_positions(code, "<=");
+        for p in le_positions {
+            assert!(
+                !mutants
+                    .iter()
+                    .any(|m| m.span.start as usize == p && m.original_snippet == "<"),
+                "unexpected overlapping '<' mutant at '<=' start position {p}"
+            );
+        }
+
+        let ge_positions = find_all_positions(code, ">=");
+        for p in ge_positions {
+            assert!(
+                !mutants
+                    .iter()
+                    .any(|m| m.span.start as usize == p && m.original_snippet == ">"),
+                "unexpected overlapping '>' mutant at '>=' start position {p}"
+            );
+        }
     }
 
     #[test]

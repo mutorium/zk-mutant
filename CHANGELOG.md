@@ -13,3 +13,4 @@ This project aims to follow Semantic Versioning. While <1.0, minor releases shou
 - Snapshot tests (insta) and integration tests using a fake `nargo`.
 - Basic CLI UI abstraction with stable non-colored output under `NO_COLOR=1`.
 - (internal) Add CLI integration snapshots for `list` command.
+- Discovery: avoid generating overlapping single-character mutants inside `<=` and `>=`, and add a regression test to lock the behavior.
