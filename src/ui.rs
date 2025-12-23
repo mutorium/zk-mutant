@@ -115,9 +115,13 @@ impl Ui {
     pub fn mutant_progress(&mut self, m: &Mutant) {
         // Track outcomes regardless of output mode.
         match m.outcome {
-            MutantOutcome::Killed => self.progress_killed += 1,
-            MutantOutcome::Survived => self.progress_survived += 1,
-            MutantOutcome::Invalid => self.progress_invalid += 1,
+            MutantOutcome::Killed => self.progress_killed = self.progress_killed.saturating_add(1),
+            MutantOutcome::Survived => {
+                self.progress_survived = self.progress_survived.saturating_add(1)
+            }
+            MutantOutcome::Invalid => {
+                self.progress_invalid = self.progress_invalid.saturating_add(1)
+            }
             MutantOutcome::NotRun => return,
         }
 
