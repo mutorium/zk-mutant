@@ -1,0 +1,17 @@
+---
+source: tests/cli_integration.rs
+expression: out
+---
+{
+  "tool": "zk-mutant",
+  "version": "0.1.0",
+  "project_root": "tests/fixtures/simple_noir",
+  "nargo_toml_present": true,
+  "compiler_version": null,
+  "nargo_version": "nargo 0.0.0-test",
+  "baseline": {
+    "success": true,
+    "exit_code": 0,
+    "duration_ms": 0
+  }
+}

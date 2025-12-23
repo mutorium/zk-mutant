@@ -211,6 +211,29 @@ fn scan_fixture_snapshot() {
 }
 
 #[test]
+fn preflight_fixture_snapshot() {
+    let out = run_zk_mutant(
+        &["preflight", "--project", "tests/fixtures/simple_noir"],
+        &[],
+    );
+    insta::assert_snapshot!("preflight_fixture", out);
+}
+
+#[test]
+fn preflight_fixture_json_snapshot() {
+    let out = run_zk_mutant_stdout(
+        &[
+            "preflight",
+            "--project",
+            "tests/fixtures/simple_noir",
+            "--json",
+        ],
+        &[],
+    );
+    insta::assert_snapshot!("preflight_fixture_json", out);
+}
+
+#[test]
 fn list_fixture_snapshot() {
     let out = run_zk_mutant(&["list", "--project", "tests/fixtures/simple_noir"], &[]);
     insta::assert_snapshot!("list_fixture", out);

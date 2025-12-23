@@ -45,6 +45,19 @@ pub enum Command {
         project: PathBuf,
     },
 
+    /// Print toolchain + baseline `nargo test` diagnostics (copy/paste friendly).
+    ///
+    /// This command is intentionally side-effect free (no out-dir rotation / no artifacts).
+    Preflight {
+        /// Path to the Noir project root or any path inside it.
+        #[arg(long, default_value = ".")]
+        project: PathBuf,
+
+        /// Emit a machine-readable JSON report to stdout.
+        #[arg(long)]
+        json: bool,
+    },
+
     /// List discovered mutants without executing tests.
     List {
         /// Path to the Noir project root or any path inside it.
@@ -141,6 +154,25 @@ struct MutationListReport {
     error: Option<String>,
 }
 
+#[derive(Debug, Serialize)]
+struct PreflightReport {
+    tool: &'static str,
+    version: &'static str,
+    project_root: PathBuf,
+    nargo_toml_present: bool,
+    compiler_version: Option<String>,
+    nargo_version: Option<String>,
+    baseline: BaselineReport,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    error: Option<String>,
+}
+
+fn print_preflight_json_and_exit(report: PreflightReport, exit_code: i32) -> ! {
+    let json = serde_json::to_string_pretty(&report).expect("serialize preflight report to json");
+    println!("{json}");
+    std::process::exit(exit_code);
+}
+
 #[derive(Debug, Default, Clone)]
 struct ToolchainInfo {
     compiler_version: Option<String>,
@@ -181,6 +213,16 @@ fn print_toolchain_info(ui: &Ui, project_root: &Path) -> ToolchainInfo {
     }
 }
 
+/// Gather toolchain info without emitting any UI output (used for `--json` reports).
+fn gather_toolchain_info(project_root: &Path) -> ToolchainInfo {
+    let compiler_version = compiler_version_from_nargo_toml(project_root).unwrap_or(None);
+    let nargo_version = nargo_version().ok();
+    ToolchainInfo {
+        compiler_version,
+        nargo_version,
+    }
+}
+
 fn print_baseline_failure_hint(ui: &Ui, toolchain: &ToolchainInfo) {
     ui.warn(
         "hint: baseline `nargo test` failures are often caused by a Noir/Nargo toolchain mismatch.",
@@ -198,8 +240,10 @@ fn print_baseline_failure_hint(ui: &Ui, toolchain: &ToolchainInfo) {
         ui.warn("hint: your `nargo --version`: <unavailable>".to_string());
     }
 
-    ui.warn("hint: try using the project's pinned toolchain (or align your Noir/Nargo version) and re-run."
-        .to_string());
+    ui.warn(
+        "hint: try using the project's pinned toolchain (or align your Noir/Nargo version) and re-run."
+            .to_string(),
+    );
 }
 
 /// Parse CLI arguments and dispatch the selected command.
@@ -230,6 +274,115 @@ pub fn run() -> Result<()> {
 
             let mutants = discover_mutants(&project);
             print_mutation_inventory(&mutants, &ui);
+
+            Ok(())
+        }
+
+        Command::Preflight { project, json } => {
+            let ui = Ui::new(json);
+            let options = Options::new(project);
+            let project_root = options.project_root.clone();
+
+            ui.title("zk-mutant: preflight");
+            ui.line(format!("project: {:?}", project_root));
+
+            let nargo_toml_present = project_root.join("Nargo.toml").exists();
+            ui.line(format!(
+                "Nargo.toml: {}",
+                if nargo_toml_present {
+                    "present"
+                } else {
+                    "missing"
+                }
+            ));
+
+            // Print versions (human mode) or gather silently (json mode).
+            let toolchain = if json {
+                gather_toolchain_info(&project_root)
+            } else {
+                print_toolchain_info(&ui, &project_root)
+            };
+
+            // Baseline `nargo test`.
+            let baseline_result = match run_nargo_test(&project_root) {
+                Ok(r) => r,
+                Err(e) => {
+                    let report = PreflightReport {
+                        tool: "zk-mutant",
+                        version: env!("CARGO_PKG_VERSION"),
+                        project_root: project_root.clone(),
+                        nargo_toml_present,
+                        compiler_version: toolchain.compiler_version.clone(),
+                        nargo_version: toolchain.nargo_version.clone(),
+                        baseline: BaselineReport {
+                            success: false,
+                            exit_code: None,
+                            duration_ms: 0,
+                        },
+                        error: Some(format!("failed to run `nargo test`: {e}")),
+                    };
+
+                    if json {
+                        print_preflight_json_and_exit(report, EXIT_ERROR);
+                    }
+
+                    ui.error(format!(
+                        "failed to run `nargo test` in {:?}: {e}",
+                        project_root
+                    ));
+                    return Err(e);
+                }
+            };
+
+            let baseline = BaselineReport::from_nargo(&baseline_result);
+
+            ui.line(format!(
+                "nargo test finished in {:?} (exit code: {:?}, success: {})",
+                baseline_result.duration, baseline_result.exit_code, baseline_result.success
+            ));
+
+            if !baseline_result.success {
+                if json {
+                    let report = PreflightReport {
+                        tool: "zk-mutant",
+                        version: env!("CARGO_PKG_VERSION"),
+                        project_root: project_root.clone(),
+                        nargo_toml_present,
+                        compiler_version: toolchain.compiler_version.clone(),
+                        nargo_version: toolchain.nargo_version.clone(),
+                        baseline,
+                        error: Some("baseline `nargo test` failed".to_string()),
+                    };
+                    print_preflight_json_and_exit(report, EXIT_ERROR);
+                }
+
+                ui.error("nargo test failed");
+
+                if !baseline_result.stdout.is_empty() {
+                    ui.error(format!("stdout from nargo:\n{}", baseline_result.stdout));
+                }
+                if !baseline_result.stderr.is_empty() {
+                    ui.error(format!("stderr from nargo:\n{}", baseline_result.stderr));
+                }
+
+                print_baseline_failure_hint(&ui, &toolchain);
+
+                return Err(anyhow::anyhow!("baseline `nargo test` failed"));
+            }
+
+            if json {
+                let report = PreflightReport {
+                    tool: "zk-mutant",
+                    version: env!("CARGO_PKG_VERSION"),
+                    project_root: project_root.clone(),
+                    nargo_toml_present,
+                    compiler_version: toolchain.compiler_version.clone(),
+                    nargo_version: toolchain.nargo_version.clone(),
+                    baseline,
+                    error: None,
+                };
+                print_preflight_json_and_exit(report, EXIT_OK);
+            }
 
             Ok(())
         }

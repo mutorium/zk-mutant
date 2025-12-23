@@ -1,0 +1,13 @@
+---
+source: tests/cli_integration.rs
+expression: out
+---
+status: exit status: 0
+--- stdout ---
+zk-mutant: preflight
+project: "tests/fixtures/simple_noir"
+Nargo.toml: present
+compiler_version (Nargo.toml): <none>
+nargo --version: nargo 0.0.0-test
+nargo test finished in <DUR> (exit code: Some(0), success: true)
+--- stderr ---

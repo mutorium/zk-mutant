@@ -9,10 +9,11 @@ Mutation testing for Noir circuits
 Usage: zk-mutant <COMMAND>
 
 Commands:
-  scan  Show a project overview and mutation inventory summary
-  list  List discovered mutants without executing tests
-  run   Run mutation testing
-  help  Print this message or the help of the given subcommand(s)
+  scan       Show a project overview and mutation inventory summary
+  preflight  Print toolchain + baseline `nargo test` diagnostics (copy/paste friendly)
+  list       List discovered mutants without executing tests
+  run        Run mutation testing
+  help       Print this message or the help of the given subcommand(s)
 
 Options:
   -h, --help     Print help
