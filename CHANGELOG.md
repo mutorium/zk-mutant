@@ -4,18 +4,40 @@ All notable changes to this project will be documented in this file.
 
 This project aims to follow Semantic Versioning. While <1.0, minor releases should remain backwards compatible when reasonable.
 
-## [Unreleased] (target: 0.1.0)
+## [Unreleased]
+Planned for: `0.2.0-alpha.1`
 
 ### Added
-- `run` command: discover mutants, run baseline `nargo test`, then run per-mutant tests.
-- `--json` output mode (machine-readable JSON to stdout; human output routed to stderr).
-- Output artifacts directory with rotation (`mutants.out/` and `mutants.out.old/`).
-- Snapshot tests (insta) and integration tests using a fake `nargo`.
-- Basic CLI UI abstraction with stable non-colored output under `NO_COLOR=1`.
-- (internal) Add CLI integration snapshots for `list` command.
-- Discovery: avoid generating overlapping single-character mutants inside `<=` and `>=`, and add a regression test to lock the behavior.
-- Print project `compiler_version` (from Nargo.toml) and `nargo --version` in `list`/`run`, and show clearer baseline failure hints for likely toolchain mismatches.
-- Add preflight subcommand for copy/paste-friendly toolchain + baseline diagnostics (optional JSON), and print compiler_version/nargo --version in list/run with a helpful mismatch hint on baseline failures.
-- Tighten CLI/UI/output-path assertions and add coverage for edge cases uncovered by cargo-mutants
-- Tests: exercise KILLED mutant path in CLI and tighten Ui outcome counter assertions.
+- _TBD_
 
+### Changed
+- _TBD_
+
+### Fixed
+- _TBD_
+
+## [0.1.0] - 2025-12-23
+
+Initial public release.
+
+### Highlights
+- Mutation testing for Noir projects: discover source-level mutants and run `nargo test` under mutation to measure test-suite strength.
+- Deterministic mutant discovery and stable IDs (sorted by file + span; IDs assigned `1..N`).
+- Human-friendly output and a machine-readable `--json` mode (JSON to stdout; human output routed to stderr).
+- Reproducible output artifacts written to `mutants.out/` with directory rotation to `mutants.out.old/`.
+
+### Commands
+- `scan` — project overview and mutation inventory summary.
+- `list` — list discovered mutants (optionally write discovery artifacts).
+- `run` — baseline + mutation test execution (supports `--limit`, `--verbose`, `--fail-on-survivors`, `--json`).
+- `preflight` — toolchain + baseline diagnostics for debugging version mismatches.
+
+### Output artifacts
+`run` writes the following to the output directory (default: `<project_root>/mutants.out/`):
+
+- `run.json`
+- `mutants.json`
+- `outcomes.json`
+- `caught.txt`, `missed.txt`, `unviable.txt`
+- `diff/*.diff`
+- `log`

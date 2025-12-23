@@ -2,17 +2,28 @@
 name = "zk-mutant"
 version = "0.1.0"
 edition = "2024"
+rust-version = "1.85"
+description = "Mutation testing for Noir circuits"
+readme = "README.md"
+license = "MIT"
+repository = "https://github.com/mutorium/zk-mutant"
+homepage = "https://www.mutorium.com"
+keywords = ["noir", "zk", "mutation-testing", "testing", "security"]
+categories = ["development-tools::testing", "command-line-utilities"]
 
 [dependencies]
 anyhow = "1"
 clap = { version = "4", features = ["derive"] }
+console = "0.15"
 noir-metrics = "0.2.0"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tempfile = "3"
-console = "0.15"
 
 [dev-dependencies]
 assert_cmd = "2"
-regex = "1"
 insta = { version = "1", features = ["json"] }
+regex = "1"
+
+[package.metadata.docs.rs]
+all-features = true
