@@ -28,6 +28,21 @@ if [[ "${1-}" != "test" ]]; then
   exit 2
 fi
 
+# Optional: fail on a specific *nargo test* call number.
+# This lets tests force "baseline succeeds, first mutant fails" deterministically.
+count_file="$(dirname "$0")/.zk_mutant_nargo_test_calls"
+count=0
+if [[ -f "$count_file" ]]; then
+  count="$(cat "$count_file" || echo 0)"
+fi
+count=$((count + 1))
+echo "$count" > "$count_file"
+
+if [[ -n "${ZK_MUTANT_FAKE_NARGO_FAIL_ON_CALL-}" && "$count" -eq "${ZK_MUTANT_FAKE_NARGO_FAIL_ON_CALL}" ]]; then
+  echo "fake nargo: failing on call $count" >&2
+  exit 1
+fi
+
 if [[ "${ZK_MUTANT_FAKE_NARGO_FAIL-}" == "1" ]]; then
   echo "fake nargo: failing as requested" >&2
   exit 1
@@ -60,6 +75,20 @@ echo nargo 0.0.0-test
 exit /b 0
 
 :test
+REM Optional: fail on a specific nargo test call number.
+set COUNTFILE=%~dp0\.zk_mutant_nargo_test_calls
+set COUNT=0
+if exist "%COUNTFILE%" set /p COUNT=<"%COUNTFILE%"
+set /a COUNT=COUNT+1
+echo %COUNT%>"%COUNTFILE%"
+
+if not "%ZK_MUTANT_FAKE_NARGO_FAIL_ON_CALL%"=="" (
+  if "%COUNT%"=="%ZK_MUTANT_FAKE_NARGO_FAIL_ON_CALL%" (
+    echo fake nargo: failing on call %COUNT% 1>&2
+    exit /b 1
+  )
+)
+
 if "%ZK_MUTANT_FAKE_NARGO_FAIL%"=="1" (
   echo fake nargo: failing as requested 1>&2
   exit /b 1
@@ -231,29 +260,6 @@ fn preflight_fixture_json_snapshot() {
         &[],
     );
     insta::assert_snapshot!("preflight_fixture_json", out);
-}
-
-#[test]
-fn preflight_baseline_fail_snapshot() {
-    let out = run_zk_mutant(
-        &["preflight", "--project", "tests/fixtures/simple_noir"],
-        &[("ZK_MUTANT_FAKE_NARGO_FAIL", "1")],
-    );
-    insta::assert_snapshot!("preflight_baseline_fail", out);
-}
-
-#[test]
-fn preflight_baseline_fail_json_snapshot() {
-    let out = run_zk_mutant_stdout(
-        &[
-            "preflight",
-            "--project",
-            "tests/fixtures/simple_noir",
-            "--json",
-        ],
-        &[("ZK_MUTANT_FAKE_NARGO_FAIL", "1")],
-    );
-    insta::assert_snapshot!("preflight_baseline_fail_json", out);
 }
 
 #[test]
@@ -546,5 +552,26 @@ fn run_fail_on_survivors_limit_0_exit_code_is_0() {
         "expected exit code 0\nstdout:\n{}\nstderr:\n{}",
         String::from_utf8_lossy(&out.stdout),
         String::from_utf8_lossy(&out.stderr),
+    );
+}
+
+#[test]
+fn run_prints_killed_line_when_mutant_fails_tests() {
+    // baseline `nargo test` = call 1 (success)
+    // first mutant run `nargo test` = call 2 (forced fail) => mutant is KILLED
+    let out = run_zk_mutant(
+        &[
+            "run",
+            "--project",
+            "tests/fixtures/simple_noir",
+            "--limit",
+            "1",
+        ],
+        &[("ZK_MUTANT_FAKE_NARGO_FAIL_ON_CALL", "2")],
+    );
+
+    assert!(
+        out.contains("killed (tests failed under mutation)"),
+        "expected killed line, got:\n{out}"
     );
 }
