@@ -4,7 +4,7 @@ expression: out
 ---
 {
   "tool": "zk-mutant",
-  "version": "0.1.0",
+  "version": "0.2.0-alpha.1",
   "project_root": "tests/fixtures/simple_noir",
   "discovered": 0,
   "executed": 0,
