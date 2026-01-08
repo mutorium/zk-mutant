@@ -4,8 +4,7 @@ All notable changes to this project will be documented in this file.
 
 This project aims to follow Semantic Versioning. While <1.0, minor releases should remain backwards compatible when reasonable.
 
-## [Unreleased]
-Planned for: `0.1.1`
+## ## [0.1.1] - 2026-01-08
 
 ### Fixed
 - Fix: do not generate mutants from line/block comments (e.g., // ===== and equations in comments).
