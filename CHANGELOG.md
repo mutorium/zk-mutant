@@ -5,16 +5,10 @@ All notable changes to this project will be documented in this file.
 This project aims to follow Semantic Versioning. While <1.0, minor releases should remain backwards compatible when reasonable.
 
 ## [Unreleased]
-Planned for: `0.2.0-alpha.1`
-
-### Added
-- _TBD_
-
-### Changed
-- _TBD_
+Planned for: `0.1.1`
 
 ### Fixed
-- _TBD_
+- Fix: do not generate mutants from line/block comments (e.g., // ===== and equations in comments).
 
 ## [0.1.0] - 2025-12-23
 
