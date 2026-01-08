@@ -43,6 +43,7 @@ fn discover_mutants_in_code(path: &Path, code: &str) -> Vec<Mutant> {
 
     // Compute byte ranges that belong to #[test] functions in this file.
     let test_ranges = find_test_code_ranges(code);
+    let comment_ranges = find_comment_ranges(code);
 
     for (pattern, op_name, category, replacement) in comparison_mutation_rules() {
         let mut search_start: usize = 0;
@@ -62,6 +63,12 @@ fn discover_mutants_in_code(path: &Path, code: &str) -> Vec<Mutant> {
             // Avoid overlapping single-character matches inside multi-character operators.
             // Example: `<` should not match the `<` of `<=`, and `>` should not match the `>` of `>=`.
             if should_skip_overlapping_single_char(pattern, code.as_bytes(), start) {
+                search_start = next_search_start;
+                continue;
+            }
+
+            // Skip operators that live inside comments.
+            if in_any_range(start, &comment_ranges) {
                 search_start = next_search_start;
                 continue;
             }
@@ -187,6 +194,117 @@ fn find_test_code_ranges(code: &str) -> Vec<Range<usize>> {
 
         // Move offset past this line and its newline.
         offset = line_end + 1;
+    }
+
+    ranges
+}
+
+/// Return byte ranges corresponding to line (`// ...`) and block (`/* ... */`) comments.
+///
+/// This is a lightweight lexer:
+/// - recognizes `//` to end-of-line
+/// - recognizes `/* ... */`
+/// - ignores comment openers inside `"..."` and `'...'` (handles simple escapes)
+fn find_comment_ranges(code: &str) -> Vec<Range<usize>> {
+    let bytes = code.as_bytes();
+    let mut ranges = Vec::new();
+
+    #[derive(Copy, Clone, Debug, PartialEq, Eq)]
+    enum State {
+        Normal,
+        LineComment { start: usize },
+        BlockComment { start: usize },
+        DoubleString,
+        SingleString,
+    }
+
+    let mut i = 0usize;
+    let mut state = State::Normal;
+
+    while i < bytes.len() {
+        match state {
+            State::Normal => {
+                // start of line or block comment?
+                if bytes[i] == b'/' && i + 1 < bytes.len() {
+                    let next = bytes[i + 1];
+                    if next == b'/' {
+                        state = State::LineComment { start: i };
+                        i += 2;
+                        continue;
+                    }
+                    if next == b'*' {
+                        state = State::BlockComment { start: i };
+                        i += 2;
+                        continue;
+                    }
+                }
+
+                // strings (so `//` inside strings doesn't start a comment)
+                if bytes[i] == b'"' {
+                    state = State::DoubleString;
+                    i += 1;
+                    continue;
+                }
+                if bytes[i] == b'\'' {
+                    state = State::SingleString;
+                    i += 1;
+                    continue;
+                }
+
+                i += 1;
+            }
+
+            State::LineComment { start } => {
+                if bytes[i] == b'\n' {
+                    ranges.push(start..i); // exclude newline
+                    state = State::Normal;
+                    i += 1;
+                } else {
+                    i += 1;
+                }
+            }
+
+            State::BlockComment { start } => {
+                // end `*/`
+                if bytes[i] == b'*' && i + 1 < bytes.len() && bytes[i + 1] == b'/' {
+                    i += 2; // include */
+                    ranges.push(start..i);
+                    state = State::Normal;
+                } else {
+                    i += 1;
+                }
+            }
+
+            State::DoubleString => {
+                if bytes[i] == b'\\' && i + 1 < bytes.len() {
+                    i += 2; // skip escaped char
+                } else if bytes[i] == b'"' {
+                    state = State::Normal;
+                    i += 1;
+                } else {
+                    i += 1;
+                }
+            }
+
+            State::SingleString => {
+                if bytes[i] == b'\\' && i + 1 < bytes.len() {
+                    i += 2;
+                } else if bytes[i] == b'\'' {
+                    state = State::Normal;
+                    i += 1;
+                } else {
+                    i += 1;
+                }
+            }
+        }
+    }
+
+    // If file ends while still inside a comment, close it at EOF.
+    match state {
+        State::LineComment { start } | State::BlockComment { start } => {
+            ranges.push(start..bytes.len())
+        }
+        _ => {}
     }
 
     ranges
@@ -350,5 +468,42 @@ fn t() {
         assert_eq!(advance_search_start(10, 500, 100), 100);
         assert_eq!(advance_search_start(99, 99, 100), 100);
         assert_eq!(advance_search_start(100, 100, 100), 100);
+    }
+
+    #[test]
+    fn discover_ignores_line_and_block_comments() {
+        let code = r#"
+fn helper() {
+    // comment with operators: == != <= >=
+    /* block comment with operators:
+       leaf != 0
+       leaf == 0
+    */
+
+    let a = 1;
+    let b = 2;
+    assert(a == b);
+    assert(a != b);
+}
+"#;
+
+        let path = PathBuf::from("src/main.nr");
+        let mutants = discover_mutants_in_code(&path, code);
+
+        // Only the two operators in real code should be mutated.
+        assert_eq!(
+            mutants.len(),
+            2,
+            "expected only code operators to be mutated"
+        );
+
+        let comment_ranges = find_comment_ranges(code);
+        for m in &mutants {
+            assert!(
+                !in_any_range(m.span.start as usize, &comment_ranges),
+                "mutant should not be inside a comment: {:?}",
+                m
+            );
+        }
     }
 }
